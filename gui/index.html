@@ -1,0 +1,2947 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crazyflie Flight Deck</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='%232fb8ff'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Ccircle cx='25' cy='7' r='5'/%3E%3Ccircle cx='7' cy='25' r='5'/%3E%3Ccircle cx='25' cy='25' r='5'/%3E%3C/g%3E%3Cpath d='M7 7L25 25M25 7L7 25' stroke='%23e6edf3' stroke-width='3'/%3E%3C/svg%3E">
+<!--
+  Crazyflie Flight Deck: a single-file ground station for the Bitcraze Crazyflie 2.1 / 2.1+.
+  Open this file in Chrome or Edge. No install and no server needed.
+
+  Links:   Bluetooth LE (Web Bluetooth) - Crazyradio PA/2.0 (WebUSB) - built-in simulator
+  Input:   PS5 DualSense or any gamepad (Gamepad API), keyboard fallback
+  Protocol: CRTP, checked against bitcraze/crazyflie-firmware, crazyflie-lib-python,
+            crazyflie-clients-python and crazyflie2-nrf-firmware (BLE service).
+-->
+<style>
+:root {
+  --bg: #0a0f15; --panel: #111922; --panel2: #16212d; --line: #223041; --text: #e6edf3;
+  --muted: #8b9bb0; --accent: #2fb8ff; --accent2: #7c5cff; --ok: #2fd27a; --warn: #ffb020;
+  --bad: #ff4d4f; --sky1: #1e5b99; --sky2: #4a90d9; --gnd1: #8a5a2b; --gnd2: #5a3a1a;
+  --shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 6px 18px rgba(0,0,0,.25);
+  color-scheme: dark;
+}
+[data-theme="light"] {
+  --bg: #eef2f6; --panel: #ffffff; --panel2: #f5f8fb; --line: #d6dee8; --text: #17202a;
+  --muted: #5c6b7c; --shadow: 0 1px 2px rgba(0,0,0,.06), 0 6px 18px rgba(0,0,0,.06);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif; min-height: 100vh; }
+button, input, select { font: inherit; color: inherit; }
+a { color: var(--accent); }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.hidden { display: none !important; }
+
+/* ---------- header ---------- */
+header.top {
+  position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; letter-spacing: .02em; margin-right: 6px; }
+.brand svg { width: 26px; height: 26px; }
+.conn { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { background: var(--panel2); border: 0; padding: 6px 10px; cursor: pointer; border-right: 1px solid var(--line); }
+.seg button:last-child { border-right: 0; }
+.seg button.on { background: var(--accent); color: #001522; font-weight: 600; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 99px;
+  background: var(--panel2); border: 1px solid var(--line); font-size: 12px; white-space: nowrap;
+}
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.chip.ok .dot { background: var(--ok); } .chip.warn .dot { background: var(--warn); } .chip.bad .dot { background: var(--bad); }
+.chip.ok { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+.chip.warn { border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); }
+.chip.bad { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); }
+.status-chips { margin-left: auto; }
+
+/* ---------- buttons & inputs ---------- */
+.btn {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px;
+  cursor: pointer; transition: background .12s, border-color .12s, transform .05s; user-select: none;
+}
+.btn:hover { border-color: var(--accent); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.small { padding: 3px 8px; font-size: 12px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #001522; font-weight: 650; }
+.btn.big { padding: 14px 10px; font-size: 16px; font-weight: 700; letter-spacing: .03em; flex: 1; }
+.btn.arm-on { background: var(--warn); border-color: var(--warn); color: #241600; }
+.btn.estop {
+  width: 100%; background: var(--bad); border-color: var(--bad); color: #fff; font-size: 18px; font-weight: 800;
+  padding: 16px; letter-spacing: .06em; box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 25%, transparent);
+}
+.btn.estop small { display: block; font-weight: 500; font-size: 11px; opacity: .9; letter-spacing: .02em; }
+input[type=text], input:not([type]), input[type=number], select {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; min-width: 0;
+}
+input[type=range] { accent-color: var(--accent); width: 100%; }
+input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
+label.row { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; margin: 8px 0; }
+label.row > span:first-child { color: var(--muted); }
+label.row output { font-variant-numeric: tabular-nums; color: var(--text); min-width: 54px; text-align: right; }
+label.row input[type=range] { grid-column: 1 / -1; }
+
+/* ---------- tabs ---------- */
+nav.tabs { display: flex; gap: 2px; padding: 0 10px; background: var(--panel); border-bottom: 1px solid var(--line); overflow-x: auto; }
+nav.tabs button {
+  background: none; border: 0; padding: 10px 14px; cursor: pointer; color: var(--muted);
+  border-bottom: 2px solid transparent; white-space: nowrap;
+}
+nav.tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+main { padding: 12px; max-width: 1600px; margin: 0 auto; }
+.tab { display: none; }
+.tab.on { display: block; }
+
+/* ---------- cards & layout ---------- */
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; box-shadow: var(--shadow); min-width: 0; }
+.card h3 { margin: 0 0 8px; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.card h3 .grow { flex: 1; }
+.stack { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.fly-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 12px; }
+.gauges { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.btn-row { display: flex; gap: 8px; margin: 8px 0; }
+canvas { display: block; width: 100%; }
+.banner { padding: 10px 14px; border-radius: 10px; margin-bottom: 12px; border: 1px solid var(--line); background: var(--panel2); }
+.banner.warn { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, var(--panel)); }
+.banner.bad { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, var(--panel)); }
+.banner.ok { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, var(--panel)); }
+.state { font-weight: 800; letter-spacing: .06em; font-size: 15px; }
+.state-line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; }
+.mode {
+  text-align: left; background: var(--panel2); border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; cursor: pointer;
+}
+.mode b { display: block; font-size: 13px; }
+.mode span { font-size: 11px; color: var(--muted); }
+.mode.on { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+.mode.na { opacity: .5; }
+.readout { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.readout td { padding: 2px 4px; border-bottom: 1px dashed var(--line); }
+.readout td:first-child { color: var(--muted); }
+.readout td:last-child { text-align: right; }
+.big-num { font-size: 30px; font-weight: 750; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.bat { display: flex; align-items: center; gap: 14px; }
+.batbar { flex: 1; height: 16px; border-radius: 6px; background: var(--panel2); border: 1px solid var(--line); overflow: hidden; }
+.batbar > div { height: 100%; width: 0; background: var(--ok); transition: width .3s; }
+.progress { height: 4px; background: var(--panel2); border-radius: 2px; overflow: hidden; }
+.progress > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+
+/* ---------- tables/lists in data tabs ---------- */
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.toolbar .grow { flex: 1; }
+.search { min-width: 220px; flex: 1; }
+details.group { border: 1px solid var(--line); border-radius: 8px; margin: 6px 0; background: var(--panel2); }
+details.group > summary { cursor: pointer; padding: 6px 10px; font-weight: 600; list-style: none; display: flex; gap: 8px; }
+details.group > summary::-webkit-details-marker { display: none; }
+details.group > summary::before { content: "▸"; color: var(--muted); }
+details.group[open] > summary::before { content: "▾"; }
+details.group > summary .count { color: var(--muted); font-weight: 400; }
+.ptable { width: 100%; border-collapse: collapse; }
+.ptable td { padding: 4px 10px; border-top: 1px solid var(--line); vertical-align: middle; }
+.ptable td.name { font-family: ui-monospace, Menlo, Consolas, monospace; }
+.ptable td.type { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.ptable input[type=text] { width: 130px; }
+.ptable tr.changed td { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+pre.console {
+  margin: 0; height: calc(100vh - 230px); min-height: 300px; overflow: auto; padding: 10px; border-radius: 8px;
+  background: #05080c; color: #b7f7c9; border: 1px solid var(--line); font-size: 12.5px; white-space: pre-wrap;
+}
+[data-theme="light"] pre.console { background: #0d1520; }
+.kbd { display: inline-block; padding: 0 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; background: var(--panel2); font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
+.map-grid { display: grid; grid-template-columns: 1fr auto auto; gap: 6px 10px; align-items: center; }
+.btn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; }
+.pbtn { text-align: center; padding: 6px 4px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel2); font-size: 12px; }
+.pbtn.on { background: var(--accent); color: #001522; border-color: var(--accent); }
+.axis { display: grid; grid-template-columns: 70px 1fr 54px; gap: 8px; align-items: center; margin: 4px 0; font-size: 12px; }
+.axis .bar { height: 10px; border-radius: 5px; background: var(--panel2); border: 1px solid var(--line); position: relative; overflow: hidden; }
+.axis .bar i { position: absolute; top: 0; bottom: 0; background: var(--accent); }
+.help h2 { margin: 18px 0 8px; font-size: 18px; }
+.help h2:first-child { margin-top: 0; }
+.help li { margin: 4px 0; }
+.help table { border-collapse: collapse; }
+.help td, .help th { padding: 4px 10px; border-bottom: 1px solid var(--line); text-align: left; }
+.cols { columns: 2 380px; column-gap: 12px; }
+.cols > .card { break-inside: avoid; margin-bottom: 12px; display: block; }
+#toast {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 50;
+  display: grid; gap: 6px; pointer-events: none; width: min(560px, calc(100vw - 32px));
+}
+#toast div {
+  background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+  padding: 10px 14px; border-radius: 8px; box-shadow: var(--shadow); animation: pop .15s ease-out;
+}
+#toast div.warn { border-left-color: var(--warn); }
+#toast div.bad { border-left-color: var(--bad); }
+#toast div.ok { border-left-color: var(--ok); }
+@keyframes pop { from { opacity: 0; transform: translateY(6px); } }
+dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; max-width: 520px; }
+dialog::backdrop { background: rgba(0,0,0,.5); }
+@media (max-width: 1050px) { .fly-grid { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .gauges { grid-template-columns: 1fr 1fr; }
+  .two { grid-template-columns: 1fr; }
+  .status-chips { margin-left: 0; }
+  main { padding: 8px; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><g fill="var(--accent)"><circle cx="7" cy="7" r="5"/><circle cx="25" cy="7" r="5"/><circle cx="7" cy="25" r="5"/><circle cx="25" cy="25" r="5"/></g><path d="M7 7L25 25M25 7L7 25" stroke="var(--text)" stroke-width="3"/></svg>
+    Crazyflie Flight Deck
+  </div>
+  <div class="conn">
+    <div class="seg" id="linkSel" role="group" aria-label="Connection type">
+      <button data-link="ble" title="Bluetooth LE, built into the Crazyflie 2.1/2.1+">Bluetooth</button>
+      <button data-link="radio" title="Crazyradio PA / 2.0 USB dongle">Crazyradio</button>
+      <button data-link="sim" title="Practice without a drone">Simulator</button>
+    </div>
+    <button class="btn primary" id="btnConnect">Connect</button>
+    <button class="btn hidden" id="btnScan" title="Search all radio channels for Crazyflies">Scan</button>
+  </div>
+  <div class="chips status-chips">
+    <span class="chip" id="chipLink"><span class="dot"></span><span>Not connected</span></span>
+    <span class="chip" id="chipBat"><span class="dot"></span><span>Battery –</span></span>
+    <span class="chip" id="chipPad"><span class="dot"></span><span>No controller</span></span>
+  </div>
+</header>
+<div class="progress"><div id="loadBar"></div></div>
+<nav class="tabs" id="tabs">
+  <button data-tab="fly" class="on">✈ Fly</button>
+  <button data-tab="plot">📈 Plotter</button>
+  <button data-tab="logs">🧾 Log data</button>
+  <button data-tab="params">⚙ Parameters</button>
+  <button data-tab="console">⌨ Console</button>
+  <button data-tab="pad">🎮 Controller</button>
+  <button data-tab="settings">🛠 Settings</button>
+  <button data-tab="help">❓ Help</button>
+</nav>
+<main>
+<!-- ================= FLY ================= -->
+<section class="tab on" id="tab-fly">
+  <div id="banner" class="banner hidden"></div>
+  <div class="fly-grid">
+    <div class="stack">
+      <div class="card">
+        <h3>Attitude <span class="grow"></span><span class="muted small" id="hudInfo"></span></h3>
+        <canvas id="hud" height="380" aria-label="Artificial horizon"></canvas>
+      </div>
+      <div class="gauges">
+        <div class="card"><h3>Roll · side tilt</h3><canvas id="gRoll" height="150"></canvas></div>
+        <div class="card"><h3>Pitch · nose</h3><canvas id="gPitch" height="150"></canvas></div>
+        <div class="card"><h3>Heading · yaw</h3><canvas id="gYaw" height="150"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>Controller → drone <span class="grow"></span><span class="muted small" id="rateInfo"></span></h3>
+        <div class="two">
+          <canvas id="gSticks" height="150"></canvas>
+          <table class="readout" id="pktTable">
+            <tr><td>Setpoint</td><td id="oType">–</td></tr>
+            <tr><td>Roll</td><td id="oRoll">–</td></tr>
+            <tr><td>Pitch</td><td id="oPitch">–</td></tr>
+            <tr><td>Yaw rate</td><td id="oYaw">–</td></tr>
+            <tr><td id="oThrustL">Thrust</td><td id="oThrust">–</td></tr>
+            <tr><td>Bytes</td><td class="mono small" id="oHex" style="word-break:break-all">–</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="card">
+        <div class="state-line"><span class="state" id="fState">DISCONNECTED</span><span class="muted" id="fHint">Connect to a Crazyflie to start.</span></div>
+        <div class="btn-row">
+          <button class="btn big" id="btnArm" disabled>ARM <small class="muted">△</small></button>
+          <button class="btn big" id="btnTakeoff" disabled>TAKE OFF <small class="muted">✕</small></button>
+        </div>
+        <button class="btn estop" id="btnEstop">EMERGENCY STOP<small>Space · ○ Circle · cuts motors immediately</small></button>
+      </div>
+      <div class="card">
+        <h3>Flight mode <span class="grow"></span><span class="muted small">□ Square cycles</span></h3>
+        <div class="modes" id="modes"></div>
+        <p class="muted small" id="modeHelp" style="margin:8px 0 0"></p>
+      </div>
+      <div class="two">
+        <div class="card"><h3>Altitude</h3><canvas id="gAlt" height="210"></canvas></div>
+        <div class="card"><h3>Thrust &amp; motors</h3><canvas id="gMotors" height="210"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>Battery <span class="grow"></span><span class="muted small" id="batState"></span></h3>
+        <div class="bat"><div class="big-num" id="batPct">–</div><div style="flex:1">
+          <div class="batbar"><div id="batBar"></div></div>
+          <div class="muted small" style="margin-top:4px"><span id="batV">– V</span> · <span id="flightTime">flight time 0:00</span></div>
+        </div></div>
+      </div>
+      <div class="card">
+        <h3>Status</h3>
+        <div class="chips" id="supChips"><span class="muted small">Waiting for telemetry…</span></div>
+        <h3 style="margin-top:12px">Decks detected</h3>
+        <div class="chips" id="deckChips"><span class="muted small">–</span></div>
+        <h3 style="margin-top:12px">Sensors</h3>
+        <table class="readout" id="sensTable"></table>
+      </div>
+      <div class="card">
+        <h3>Flight feel</h3>
+        <div class="seg" id="presetSel" style="margin-bottom:6px">
+          <button data-preset="beginner">Beginner</button><button data-preset="normal">Normal</button><button data-preset="sport">Sport</button>
+        </div>
+        <label class="row"><span>Max tilt angle</span><output data-out="maxAngle"></output><input type="range" min="5" max="45" step="1" data-set="maxAngle"></label>
+        <label class="row"><span>Max thrust</span><output data-out="maxThrust"></output><input type="range" min="30" max="100" step="1" data-set="maxThrust"></label>
+        <label class="row"><span>Trim roll / pitch</span><output id="trimOut">0.0° / 0.0°</output></label>
+        <p class="muted small" style="margin:0">D-pad trims · Create resets trim · more in Settings</p>
+      </div>
+      <div class="card hidden" id="ledCard">
+        <h3>LED ring</h3>
+        <label class="row"><span>Effect</span><select id="ledEffect"></select></label>
+        <label class="row"><span>Headlights</span><input type="checkbox" id="ledHead"></label>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PLOTTER ================= -->
+<section class="tab" id="tab-plot">
+  <div class="toolbar">
+    <div class="seg" id="plotPresets"></div>
+    <input class="search" id="plotVar" list="logVarList" placeholder="Add variable, e.g. gyro.x">
+    <datalist id="logVarList"></datalist>
+    <button class="btn" id="plotAdd">Add</button>
+    <span class="grow"></span>
+    <select id="plotWin"><option value="5">5 s</option><option value="10" selected>10 s</option><option value="30">30 s</option><option value="60">60 s</option></select>
+    <button class="btn" id="plotPause">Pause</button>
+    <button class="btn" id="plotCsv">Export CSV</button>
+    <button class="btn" id="plotClear">Clear</button>
+  </div>
+  <div class="card"><canvas id="plot" height="460"></canvas></div>
+  <p class="muted small">Variables are streamed at the rate chosen in Settings → Telemetry. Presets reuse data that's already streaming when possible, to save radio bandwidth.</p>
+</section>
+
+<!-- ================= LOG DATA ================= -->
+<section class="tab" id="tab-logs">
+  <div class="fly-grid">
+    <div class="card">
+      <h3>Log variables (TOC) <span class="grow"></span><span class="muted small" id="logCount"></span></h3>
+      <div class="toolbar"><input class="search" id="logSearch" placeholder="Filter, e.g. stabilizer or range"></div>
+      <div id="logToc" style="max-height:62vh;overflow:auto"><p class="muted">Connect to load the log table of contents.</p></div>
+    </div>
+    <div class="stack">
+      <div class="card">
+        <h3>New log block</h3>
+        <p class="muted small" style="margin-top:0">Tick variables on the left, then start a block. Blocks over 26 bytes are split automatically.</p>
+        <div class="toolbar">
+          <input type="text" id="blkName" placeholder="Name" value="custom" style="width:120px">
+          <label class="muted small">every <input type="number" id="blkPeriod" value="100" min="10" max="2550" step="10" style="width:80px"> ms</label>
+          <button class="btn primary" id="blkStart">Start block</button>
+        </div>
+        <div class="muted small" id="blkSel">0 selected</div>
+      </div>
+      <div class="card">
+        <h3>Running blocks</h3>
+        <div id="blkList" class="stack"><p class="muted small">None yet.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PARAMS ================= -->
+<section class="tab" id="tab-params">
+  <div class="toolbar">
+    <input class="search" id="parSearch" placeholder="Filter parameters, e.g. pid_rate or deck">
+    <button class="btn" id="parReload">Re-read values</button>
+    <span class="muted small" id="parCount"></span>
+  </div>
+  <div class="banner warn small">Changing parameters changes how the Crazyflie flies. Changes last until reboot unless you press 💾 (persistent parameters only).</div>
+  <div id="parList"><p class="muted">Connect to load parameters.</p></div>
+</section>
+
+<!-- ================= CONSOLE ================= -->
+<section class="tab" id="tab-console">
+  <div class="toolbar">
+    <label class="muted small"><input type="checkbox" id="conApp" checked> show app messages</label>
+    <label class="muted small"><input type="checkbox" id="conScroll" checked> auto-scroll</label>
+    <span class="grow"></span>
+    <button class="btn" id="conCopy">Copy</button>
+    <button class="btn" id="conClear">Clear</button>
+  </div>
+  <pre class="console" id="console"></pre>
+</section>
+
+<!-- ================= CONTROLLER ================= -->
+<section class="tab" id="tab-pad">
+  <div class="fly-grid">
+    <div class="stack">
+      <div class="card">
+        <h3>Detected controller</h3>
+        <div id="padInfo" class="muted">Plug in your PS5 controller with a USB cable and press any button.</div>
+        <div id="padAxes" style="margin-top:10px"></div>
+        <div id="padBtns" class="btn-grid" style="margin-top:10px"></div>
+        <div class="btn-row"><button class="btn" id="rumbleTest">Test rumble</button></div>
+      </div>
+      <div class="card">
+        <h3>Sticks</h3>
+        <label class="row"><span>Stick layout</span>
+          <select data-set="stickMode">
+            <option value="2">Mode 2: left = throttle/yaw, right = pitch/roll (most common)</option>
+            <option value="1">Mode 1: left = pitch/yaw, right = throttle/roll</option>
+            <option value="3">Mode 3: left = pitch/roll, right = throttle/yaw</option>
+            <option value="4">Mode 4: left = throttle/roll, right = pitch/yaw</option>
+          </select></label>
+        <label class="row"><span>Manual thrust from</span>
+          <select data-set="thrustSource">
+            <option value="stick">Throttle stick (up = more)</option>
+            <option value="r2">R2 trigger (analog)</option>
+          </select></label>
+        <label class="row"><span>Dead zone</span><output data-out="deadzone"></output><input type="range" min="0" max="0.3" step="0.01" data-set="deadzone"></label>
+        <label class="row"><span>Expo (softer centre)</span><output data-out="expo"></output><input type="range" min="0" max="0.9" step="0.05" data-set="expo"></label>
+        <label class="row"><span>Invert pitch</span><input type="checkbox" data-set="invertPitch"></label>
+        <label class="row"><span>Invert yaw</span><input type="checkbox" data-set="invertYaw"></label>
+        <label class="row"><span>Rumble alerts</span><input type="checkbox" data-set="rumble"></label>
+        <label class="row"><span>Keyboard control when no gamepad</span><input type="checkbox" data-set="keyboard"></label>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Button mapping <span class="grow"></span><button class="btn small" id="mapReset">Reset to PS5 defaults</button></h3>
+      <div class="map-grid" id="mapGrid"></div>
+      <p class="muted small">Click <b>Change</b>, then press the button you want on the controller. Esc cancels.</p>
+      <h3 style="margin-top:14px">Keyboard</h3>
+      <table class="readout small">
+        <tr><td><span class="kbd">Space</span></td><td>Emergency stop</td></tr>
+        <tr><td><span class="kbd">T</span></td><td>Arm / disarm</td></tr>
+        <tr><td><span class="kbd">Enter</span></td><td>Take off / land</td></tr>
+        <tr><td><span class="kbd">W</span><span class="kbd">S</span></td><td>Throttle / height up, down</td></tr>
+        <tr><td><span class="kbd">A</span><span class="kbd">D</span></td><td>Yaw left / right</td></tr>
+        <tr><td><span class="kbd">↑</span><span class="kbd">↓</span><span class="kbd">←</span><span class="kbd">→</span></td><td>Pitch / roll</td></tr>
+        <tr><td><span class="kbd">M</span></td><td>Next flight mode</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SETTINGS ================= -->
+<section class="tab" id="tab-settings">
+  <div class="cols">
+    <div class="card">
+      <h3>Manual (stabilized) flight</h3>
+      <label class="row"><span>Max tilt angle (°)</span><output data-out="maxAngle"></output><input type="range" min="5" max="45" step="1" data-set="maxAngle"></label>
+      <label class="row"><span>Max yaw rate (°/s)</span><output data-out="maxYaw"></output><input type="range" min="30" max="400" step="10" data-set="maxYaw"></label>
+      <label class="row"><span>Min thrust (%)</span><output data-out="minThrust"></output><input type="range" min="0" max="50" step="1" data-set="minThrust"></label>
+      <label class="row"><span>Max thrust (%)</span><output data-out="maxThrust"></output><input type="range" min="30" max="100" step="1" data-set="maxThrust"></label>
+      <label class="row"><span>Slew limit (%) · below this thrust drops instantly</span><output data-out="slewLimit"></output><input type="range" min="0" max="100" step="1" data-set="slewLimit"></label>
+      <label class="row"><span>Slew rate (%/s) · how fast thrust may drop above it</span><output data-out="slewRate"></output><input type="range" min="5" max="200" step="5" data-set="slewRate"></label>
+    </div>
+    <div class="card">
+      <h3>Assisted flight (hover, height &amp; altitude hold)</h3>
+      <label class="row"><span>Take-off height (m)</span><output data-out="takeoffHeight"></output><input type="range" min="0.2" max="1.5" step="0.05" data-set="takeoffHeight"></label>
+      <label class="row"><span>Max height (m)</span><output data-out="maxHeight"></output><input type="range" min="0.5" max="3" step="0.1" data-set="maxHeight"></label>
+      <label class="row"><span>Max horizontal speed (m/s)</span><output data-out="maxVel"></output><input type="range" min="0.1" max="2" step="0.05" data-set="maxVel"></label>
+      <label class="row"><span>Max climb/descent (m/s)</span><output data-out="maxVz"></output><input type="range" min="0.1" max="1.5" step="0.05" data-set="maxVz"></label>
+      <label class="row"><span>Landing speed (m/s)</span><output data-out="landVel"></output><input type="range" min="0.1" max="0.6" step="0.05" data-set="landVel"></label>
+      <label class="row"><span>Auto-land when controller is lost</span><input type="checkbox" data-set="failsafeLand"></label>
+    </div>
+    <div class="card">
+      <h3>Crazyradio</h3>
+      <label class="row"><span>Channel (0–125)</span><input type="number" min="0" max="125" data-set="radioChannel" style="width:90px"></label>
+      <label class="row"><span>Data rate</span><select data-set="radioRate"><option>250K</option><option>1M</option><option>2M</option></select></label>
+      <label class="row"><span>Address</span><input type="text" data-set="radioAddress" style="width:130px" class="mono"></label>
+      <p class="muted small">Defaults match a new Crazyflie: 80 / 2M / E7E7E7E7E7. Note: once the Crazyflie hears a Crazyradio it switches Bluetooth off until it is restarted.</p>
+    </div>
+    <div class="card">
+      <h3>Bluetooth</h3>
+      <label class="row"><span>Packets per second</span>
+        <select data-set="bleRate"><option value="50">50 (most compatible)</option><option value="100">100 (default)</option><option value="200">200 (fast computers)</option></select></label>
+      <p class="muted small">Every packet sent lets the Crazyflie send one back, so this rate also limits telemetry. Lower it if the connection drops.</p>
+    </div>
+    <div class="card">
+      <h3>Telemetry</h3>
+      <label class="row"><span>Attitude update (ms)</span><output data-out="attPeriod"></output><input type="range" min="20" max="200" step="10" data-set="attPeriod"></label>
+      <label class="row"><span>Status update (ms)</span><output data-out="statPeriod"></output><input type="range" min="100" max="1000" step="50" data-set="statPeriod"></label>
+      <label class="row"><span>Read every parameter value on connect</span><input type="checkbox" data-set="readAllParams"></label>
+      <div class="btn-row"><button class="btn" id="clearCache">Clear table-of-contents cache</button></div>
+      <p class="muted small">Changes apply on the next connect.</p>
+    </div>
+    <div class="card">
+      <h3>Appearance</h3>
+      <label class="row"><span>Theme</span><select data-set="theme"><option value="dark">Dark</option><option value="light">Light</option></select></label>
+      <label class="row"><span>Smooth animations</span><input type="checkbox" data-set="smooth"></label>
+      <div class="btn-row"><button class="btn" id="resetAll">Reset all settings</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HELP ================= -->
+<section class="tab help" id="tab-help">
+  <div class="cols">
+    <div class="card">
+      <h2>Quick start</h2>
+      <ol>
+        <li>Charge the battery and place the Crazyflie on flat ground, front (the side with the antenna) away from you.</li>
+        <li>Switch the Crazyflie on and wait for the propellers to finish the self-test spin.</li>
+        <li>Plug the PS5 controller into this computer with a USB-C cable and press any button. The <b>Controller</b> chip turns green.</li>
+        <li>Pick <b>Bluetooth</b>, press <b>Connect</b> and choose your <i>Crazyflie</i> in Chrome's list.</li>
+        <li>Choose a flight mode. With a <b>Flow deck</b> use <b>Hover</b>: it's by far the easiest.</li>
+        <li>Press <b>△ Triangle</b> to arm, then <b>✕ Cross</b> to take off (assisted modes), or push the throttle up gently (Manual).</li>
+        <li>Press <b>✕</b> again to land, then <b>△</b> to disarm. <b>○ Circle</b> or <b>Space</b> is the emergency stop.</li>
+      </ol>
+      <p>Want to practise first? Pick <b>Simulator</b> and press Connect. Everything works the same, with no drone at all.</p>
+    </div>
+    <div class="card">
+      <h2>PS5 controls (Mode 2)</h2>
+      <table>
+        <tr><th>Control</th><th>Manual</th><th>Assisted modes</th></tr>
+        <tr><td>Left stick ↕</td><td>Throttle (up only)</td><td>Climb / descend</td></tr>
+        <tr><td>Left stick ↔</td><td colspan="2">Yaw (turn)</td></tr>
+        <tr><td>Right stick</td><td>Tilt = roll / pitch</td><td>Move forward / back / sideways</td></tr>
+        <tr><td>✕ Cross</td><td>–</td><td>Take off / land</td></tr>
+        <tr><td>△ Triangle</td><td colspan="2">Arm / disarm</td></tr>
+        <tr><td>○ Circle</td><td colspan="2"><b>Emergency stop</b></td></tr>
+        <tr><td>□ Square</td><td colspan="2">Next flight mode</td></tr>
+        <tr><td>L1 (hold)</td><td colspan="2">Precision: half speed</td></tr>
+        <tr><td>D-pad</td><td colspan="2">Trim roll / pitch</td></tr>
+        <tr><td>Create</td><td colspan="2">Reset trim</td></tr>
+      </table>
+      <p class="muted small">Everything can be remapped on the Controller tab.</p>
+    </div>
+    <div class="card">
+      <h2>Flight modes</h2>
+      <ul>
+        <li><b>Manual</b> (stabilized): the sticks set the tilt angle and the throttle sets the thrust. Works with every Crazyflie. Needs practice.</li>
+        <li><b>Altitude hold</b>: uses the barometer. Centre the left stick to hold height; up/down climbs or descends. Drifts sideways, so you still steer.</li>
+        <li><b>Height hold</b>: like altitude hold but uses the downward laser (Flow or Z-ranger deck). Much steadier.</li>
+        <li><b>Hover</b> (Flow deck): holds height <i>and</i> position. Sticks command speed. Best for beginners.</li>
+        <li><b>Position hold</b>: world-frame velocity control. Needs Lighthouse, Loco or the Flow deck.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Safety</h2>
+      <ul>
+        <li>Fly indoors over a plain, textured floor (the Flow deck needs texture), away from people, pets and faces.</li>
+        <li>If the controller unplugs, the tab is hidden or the window loses focus, the app <b>lands automatically</b> in assisted modes and slowly reduces thrust in Manual.</li>
+        <li>If the radio link is lost, the Crazyflie levels itself after 0.5 s and stops its motors after 2 s (firmware watchdog).</li>
+        <li>After an <b>emergency stop</b> the Crazyflie is locked. Switch it off and on again to fly again.</li>
+        <li>Land when the battery warning appears. The controller rumbles on low battery.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Troubleshooting</h2>
+      <ul>
+        <li><b>"Bluetooth not available"</b>: use Chrome or Edge (not Safari/Firefox) and switch Bluetooth on. School Chromebooks can have Web Bluetooth turned off by the administrator. If double-clicking the file doesn't allow Bluetooth, open the copy hosted on GitHub Pages instead (see the README).</li>
+        <li><b>Crazyflie not in the Bluetooth list</b>: restart it. If it has talked to a Crazyradio since it was switched on, it has turned Bluetooth off.</li>
+        <li><b>Controller not detected</b>: press a button after plugging it in. Browsers only reveal gamepads after a button press.</li>
+        <li><b>Won't take off in Manual</b>: lower the throttle fully once after arming (thrust lock), then push it up.</li>
+        <li><b>Linux desktop</b>: Chrome hides Web Bluetooth behind <span class="kbd">chrome://flags/#enable-experimental-web-platform-features</span>. ChromeOS, macOS and Windows need nothing.</li>
+        <li><b>Crazyradio on Linux</b>: install Bitcraze's udev rules. <b>On Windows</b>: if Chrome can't open it, install the WinUSB driver with Zadig.</li>
+        <li><b>Drifts in Hover</b>: check the floor has texture and good light, and that the Flow deck chip is green under Decks.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>About</h2>
+      <p>One HTML file, no dependencies, runs offline. It talks CRTP, the Crazyflie's native protocol, over Bluetooth LE or a Crazyradio. Logging, parameters, console, supervisor arming, emergency stop and the high-level commander all follow the official Bitcraze firmware and libraries.</p>
+      <p class="muted small" id="aboutInfo"></p>
+    </div>
+  </div>
+</section>
+</main>
+<div id="toast" aria-live="polite"></div>
+<script type="module">
+'use strict';
+// =====================================================================
+// Utilities
+// =====================================================================
+class Emitter {
+  constructor() { this._h = new Map(); }
+  on(ev, fn) {
+    if (!this._h.has(ev)) this._h.set(ev, new Set());
+    this._h.get(ev).add(fn);
+    return () => this._h.get(ev).delete(fn);
+  }
+  emit(ev, ...a) {
+    const hs = this._h.get(ev);
+    if (!hs) return;
+    for (const fn of hs) { try { fn(...a); } catch (e) { console.error(`"${ev}" handler failed`, e); } }
+  }
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+const u16 = (d, o) => d[o] | (d[o + 1] << 8);
+const u32 = (d, o) => (d[o] | (d[o + 1] << 8) | (d[o + 2] << 16) | (d[o + 3] << 24)) >>> 0;
+const hex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join(' ');
+
+async function pool(count, width, fn) {
+  let next = 0;
+  const worker = async () => { while (next < count) { const i = next++; await fn(i); } };
+  await Promise.all(Array.from({ length: Math.min(width, count) }, worker));
+}
+
+class Packer {
+  constructor(size = 32) { this.dv = new DataView(new ArrayBuffer(size)); this.n = 0; }
+  u8(v) { this.dv.setUint8(this.n, v); this.n += 1; return this; }
+  u16(v) { this.dv.setUint16(this.n, v, true); this.n += 2; return this; }
+  u32(v) { this.dv.setUint32(this.n, v, true); this.n += 4; return this; }
+  f32(v) { this.dv.setFloat32(this.n, v, true); this.n += 4; return this; }
+  bytes() { return new Uint8Array(this.dv.buffer, 0, this.n); }
+}
+
+function f16ToF32(h) {
+  const s = h & 0x8000 ? -1 : 1, e = (h >> 10) & 0x1f, m = h & 0x3ff;
+  if (e === 0) return s * 2 ** -14 * (m / 1024);
+  if (e === 31) return m ? NaN : s * Infinity;
+  return s * 2 ** (e - 15) * (1 + m / 1024);
+}
+function f32ToF16(v) {
+  const x = new Uint32Array(new Float32Array([v]).buffer)[0];
+  const s = (x >>> 16) & 0x8000, e = ((x >>> 23) & 0xff) - 112, m = (x >>> 13) & 0x3ff;
+  if (e <= 0) return s;
+  if (e >= 31) return s | 0x7c00;
+  return s | (e << 10) | m;
+}
+// NUL-terminated string -> [text, next offset]
+function cstr(d, o) {
+  let s = '';
+  while (o < d.length && d[o] !== 0) s += String.fromCharCode(d[o++]);
+  return [s, o + 1];
+}
+function lsGet(k, def) { try { const v = localStorage.getItem('cfdeck.' + k); return v == null ? def : JSON.parse(v); } catch { return def; } }
+function lsSet(k, v) { try { localStorage.setItem('cfdeck.' + k, JSON.stringify(v)); } catch { /* storage full or blocked */ } }
+
+// =====================================================================
+// Ticker: a steady 10 ms heartbeat from a Web Worker. Worker timers keep
+// running at full speed when the tab is in the background, unlike
+// setInterval on the page, so control packets keep flowing.
+// =====================================================================
+class Ticker extends Emitter {
+  constructor(ms = 10) {
+    super();
+    this.ms = ms;
+    this._waiters = [];
+    this.kind = 'timer';
+    const tick = () => {
+      const w = this._waiters;
+      this._waiters = [];
+      for (const r of w) r();
+      this.emit('tick', performance.now());
+    };
+    const fallback = () => { if (!this._iv) { this._iv = setInterval(tick, ms); this.kind = 'timer'; } };
+    try {
+      const url = URL.createObjectURL(new Blob([`setInterval(()=>postMessage(0),${ms});`], { type: 'text/javascript' }));
+      this.worker = new Worker(url);
+      this.worker.onmessage = tick;
+      this.worker.onerror = () => { this.worker.terminate(); fallback(); };
+      this.kind = 'worker';
+    } catch { fallback(); }
+  }
+  next() { return new Promise((r) => this._waiters.push(r)); }
+}
+const ticker = new Ticker(10);
+
+// =====================================================================
+// Links. All of them expose the same interface:
+//   open(), close(), send(bytes), sendSetpoint(bytes), sendUrgent(bytes)
+//   onPacket(bytes)  onLost(reason)  stats {quality, up, down}
+// Outgoing traffic: urgent (e-stop) > newest setpoint > FIFO queue.
+// A stale setpoint is never sent after a newer one.
+// =====================================================================
+class Link {
+  constructor() {
+    this.onPacket = () => {};
+    this.onLost = () => {};
+    this._queue = [];
+    this._urgent = [];
+    this._setpoint = null;
+    this._wake = null;
+    this.running = false;
+    this.stats = { quality: 0, up: 0, down: 0 };
+    this._cnt = { up: 0, down: 0, t: performance.now() };
+  }
+  get name() { return 'link'; }
+  get kind() { return 'link'; }
+  send(bytes) { if (this._queue.length > 400) this._queue.shift(); this._queue.push(bytes); this._kick(); }
+  sendSetpoint(bytes) { this._setpoint = bytes; this._kick(); }
+  sendUrgent(bytes) { this._urgent.push(bytes); this._setpoint = null; this._kick(); }
+  _kick() { if (this._wake) { const w = this._wake; this._wake = null; w(); } }
+  _waitForWork(ms) {
+    return new Promise((resolve) => {
+      const t = setTimeout(() => { this._wake = null; resolve(); }, ms);
+      this._wake = () => { clearTimeout(t); resolve(); };
+    });
+  }
+  _next() {
+    if (this._urgent.length) return this._urgent.shift();
+    if (this._setpoint) { const s = this._setpoint; this._setpoint = null; return s; }
+    return this._queue.shift() || null;
+  }
+  _countRates() {
+    const now = performance.now(), dt = now - this._cnt.t;
+    if (dt >= 1000) {
+      this.stats.up = Math.round((this._cnt.up * 1000) / dt);
+      this.stats.down = Math.round((this._cnt.down * 1000) / dt);
+      this._cnt = { up: 0, down: 0, t: now };
+    }
+  }
+  _lose(why) { if (this.running) { this.running = false; this.onLost(why); } }
+  async close() { this.running = false; this._kick(); }
+}
+
+const NULL_PACKET = new Uint8Array([0xff]);
+// The Crazyflie's "nothing to say" packet: port 15, channel 3, no data.
+const isEmptyPacket = (d) => d.length === 0 || (d.length === 1 && (d[0] & 0xf3) === 0xf3);
+
+// ---------------------------------------------------------------------
+// Bluetooth LE. GATT layout from bitcraze/crazyflie2-nrf-firmware
+// (src/ble/ble_crazyflies.c, ble_crtpdown.c):
+//   service  00000201-...  Crazyflie
+//   0202 CRTP      write/write-no-response: one whole CRTP packet <= 20 bytes
+//   0203 CRTPUP    longer packets in 2 fragments: [0x80|pid<<5|len] + 19 bytes, then [pid<<5] + rest
+//   0204 CRTPDOWN  notifications: [0x80|pid<<5|(len-1)] + up to 19 bytes, then [pid<<5] + rest
+// The Crazyflie answers each uplink packet with at most one downlink packet,
+// so we keep sending (setpoints, requests or null packets) at a steady rate.
+// ---------------------------------------------------------------------
+const BLE_UUID = (n) => `0000${n}-1c7f-4f9e-947b-43b7c00a9a08`;
+const BLE_SERVICE = BLE_UUID('0201');
+
+class BleLink extends Link {
+  constructor(device, rate = 100) {
+    super();
+    this.device = device;
+    this.perTick = rate >= 200 ? 2 : 1;
+    this.everyOther = rate <= 50;
+    this._upPid = 0;
+    this._frag = null;
+    this._lastRx = 0;
+    this._onDisc = () => this._lose('Bluetooth connection lost (out of range, battery or switched off?)');
+  }
+  get name() { return `Bluetooth · ${this.device.name || 'Crazyflie'}`; }
+  get kind() { return 'ble'; }
+
+  static available() { return !!navigator.bluetooth; }
+
+  static async request() {
+    return navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'Crazyflie' }, { services: [BLE_SERVICE] }],
+      optionalServices: [BLE_SERVICE],
+    });
+  }
+
+  async open() {
+    this.device.addEventListener('gattserverdisconnected', this._onDisc);
+    let server;
+    for (let i = 0; i < 3; i++) {
+      try { server = await this.device.gatt.connect(); break; } catch (e) { if (i === 2) throw e; await sleep(400); }
+    }
+    const svc = await server.getPrimaryService(BLE_SERVICE);
+    this.crtp = await svc.getCharacteristic(BLE_UUID('0202'));
+    this.up = await svc.getCharacteristic(BLE_UUID('0203'));
+    this.down = await svc.getCharacteristic(BLE_UUID('0204'));
+    this.noResp = !!this.crtp.properties.writeWithoutResponse;
+    this.down.addEventListener('characteristicvaluechanged', (e) => this._onNotify(e.target.value));
+    await this.down.startNotifications();
+    this.running = true;
+    this.stats.quality = 100;
+    this._loop();
+  }
+
+  _onNotify(dv) {
+    const d = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+    if (!d.length) return;
+    const c = d[0], pid = (c >> 5) & 3;
+    if (c & 0x80) {
+      const len = (c & 0x1f) + 1;
+      if (d.length - 1 >= len) this._deliver(d.slice(1, 1 + len));
+      else this._frag = { len, pid, buf: d.slice(1) };
+    } else if (this._frag && this._frag.pid === pid) {
+      const f = this._frag;
+      this._frag = null;
+      const all = new Uint8Array(f.buf.length + d.length - 1);
+      all.set(f.buf);
+      all.set(d.subarray(1), f.buf.length);
+      if (all.length >= f.len) this._deliver(all.subarray(0, f.len));
+    }
+  }
+
+  _deliver(pk) {
+    this._lastRx = performance.now();
+    if (isEmptyPacket(pk)) return;
+    this._cnt.down++;
+    this.onPacket(pk);
+  }
+
+  _write(ch, data) { return this.noResp ? ch.writeValueWithoutResponse(data) : ch.writeValueWithResponse(data); }
+
+  async _sendPacket(pk) {
+    if (pk.length <= 20) return this._write(this.crtp, pk);
+    const pid = this._upPid;
+    this._upPid = (pid + 1) & 3;
+    const a = new Uint8Array(20);
+    a[0] = 0x80 | (pid << 5) | (pk.length & 0x1f);
+    a.set(pk.subarray(0, 19), 1);
+    const b = new Uint8Array(pk.length - 19 + 1);
+    b[0] = pid << 5;
+    b.set(pk.subarray(19), 1);
+    await this._write(this.up, a);
+    await this._write(this.up, b);
+  }
+
+  async _loop() {
+    let errors = 0, tickNo = 0;
+    while (this.running) {
+      await ticker.next();
+      if (!this.running) break;
+      if (this.everyOther && (tickNo++ & 1)) continue;
+      for (let i = 0; i < this.perTick && this.running; i++) {
+        const pk = this._next() || NULL_PACKET;
+        try {
+          await this._sendPacket(pk);
+          this._cnt.up++;
+          errors = 0;
+        } catch (e) {
+          if (!this.device.gatt.connected) { this._lose('Bluetooth connection lost'); return; }
+          // Usually "GATT operation already in progress": drop it, requests retry.
+          if (++errors > 60) { this._lose(`Bluetooth error: ${e.message}`); return; }
+        }
+      }
+      const age = performance.now() - this._lastRx;
+      this.stats.quality = this.device.gatt.connected ? (age < 600 ? 100 : age < 2000 ? 60 : 30) : 0;
+      this._countRates();
+    }
+  }
+
+  async close() {
+    this.running = false;
+    this.device.removeEventListener('gattserverdisconnected', this._onDisc);
+    try { await this.down?.stopNotifications(); } catch { /* already gone */ }
+    try { this.device.gatt.disconnect(); } catch { /* already gone */ }
+  }
+}
+
+// ---------------------------------------------------------------------
+// Crazyradio PA / 2.0 over WebUSB. From cflib drivers/crazyradio.py and
+// crtp/radiodriver.py: vendor requests configure the radio; each bulk OUT
+// packet gets a bulk IN ack [status, payload...] (status bit0 = acked,
+// bits 4-7 = retries). Safelink adds 1-bit sequence numbers both ways.
+// ---------------------------------------------------------------------
+const RADIO = { VID: 0x1915, PID: 0x7777, CHANNEL: 0x01, ADDRESS: 0x02, DATARATE: 0x03, POWER: 0x04, ARD: 0x05, ARC: 0x06, ACK_ENABLE: 0x10, CONT_CARRIER: 0x20 };
+const DATARATES = { '250K': 0, '1M': 1, '2M': 2 };
+
+function parseAddress(s) {
+  s = String(s).replace(/^0x/i, '').padStart(10, '0');
+  if (!/^[0-9a-f]{10}$/i.test(s)) throw new Error('Radio address must be 10 hex digits, e.g. E7E7E7E7E7');
+  return Array.from({ length: 5 }, (_, i) => parseInt(s.substr(i * 2, 2), 16));
+}
+
+class Crazyradio {
+  constructor(dev) { this.dev = dev; this.ch = this.dr = this.addr = null; }
+  static available() { return !!navigator.usb; }
+  static async get() {
+    const paired = (await navigator.usb.getDevices()).filter((d) => d.vendorId === RADIO.VID && d.productId === RADIO.PID);
+    return new Crazyradio(paired[0] || await navigator.usb.requestDevice({ filters: [{ vendorId: RADIO.VID, productId: RADIO.PID }] }));
+  }
+  async open() {
+    if (!this.dev.opened) await this.dev.open();
+    if (!this.dev.configuration) await this.dev.selectConfiguration(1);
+    await this.dev.claimInterface(0);
+    await this._ctrl(RADIO.CONT_CARRIER, 0);
+    await this._ctrl(RADIO.POWER, 3); // 0 dBm
+    await this._ctrl(RADIO.ARC, 3);
+    await this._ctrl(RADIO.ARD, 0x80 | 32);
+    await this._ctrl(RADIO.ACK_ENABLE, 1);
+  }
+  async close() {
+    try { await this.dev.releaseInterface(0); } catch { /* unplugged */ }
+    try { await this.dev.close(); } catch { /* unplugged */ }
+  }
+  _ctrl(request, value, data) {
+    return this.dev.controlTransferOut({ requestType: 'vendor', recipient: 'device', request, value, index: 0 }, data);
+  }
+  async setChannel(c) { if (c !== this.ch) { await this._ctrl(RADIO.CHANNEL, c); this.ch = c; } }
+  async setRate(r) { if (r !== this.dr) { await this._ctrl(RADIO.DATARATE, r); this.dr = r; } }
+  async setAddress(a) { const k = a.join(); if (k !== this.addr) { await this._ctrl(RADIO.ADDRESS, 0, new Uint8Array(a)); this.addr = k; } }
+  async send(bytes) {
+    await this.dev.transferOut(1, bytes);
+    const r = await this.dev.transferIn(1, 64);
+    const d = r.data ? new Uint8Array(r.data.buffer, r.data.byteOffset, r.data.byteLength) : new Uint8Array(0);
+    if (!d.length) return { ack: false, retry: 3, data: d };
+    return { ack: (d[0] & 1) !== 0, retry: d[0] >> 4, data: d.subarray(1) };
+  }
+  async scan(address, onProgress) {
+    const found = [];
+    await this.setAddress(parseAddress(address));
+    await this._ctrl(RADIO.ARC, 1);
+    try {
+      for (const [name, dr] of Object.entries(DATARATES)) {
+        await this.setRate(dr);
+        for (let c = 0; c <= 125; c++) {
+          await this.setChannel(c);
+          if ((await this.send(new Uint8Array([0xff, 0xff, 0xff]))).ack) found.push({ channel: c, datarate: name });
+          onProgress?.((dr * 126 + c) / 378);
+        }
+      }
+    } finally { await this._ctrl(RADIO.ARC, 3); }
+    return found;
+  }
+}
+
+class RadioLink extends Link {
+  constructor(radio, { channel = 80, datarate = '2M', address = 'E7E7E7E7E7' } = {}) {
+    super();
+    this.radio = radio;
+    this.cfg = { channel: Number(channel), datarate, address };
+    this.safelink = false;
+    this._up = 0; this._down = 0;
+    this._hist = new Uint8Array(100); this._hi = 0;
+  }
+  get name() { const c = this.cfg; return `radio://0/${c.channel}/${c.datarate}/${c.address}`; }
+  get kind() { return 'radio'; }
+
+  async open() {
+    await this.radio.open();
+    await this.radio.setRate(DATARATES[this.cfg.datarate]);
+    await this.radio.setChannel(this.cfg.channel);
+    await this.radio.setAddress(parseAddress(this.cfg.address));
+    let alive = false;
+    for (let i = 0; i < 20 && !alive; i++) alive = (await this.radio.send(NULL_PACKET)).ack;
+    if (!alive) throw new Error(`No Crazyflie answered on ${this.name}. Is it on? Try Scan.`);
+    for (let i = 0; i < 10; i++) {
+      const r = await this.radio.send(new Uint8Array([0xff, 0x05, 0x01]));
+      if (r.ack && r.data.length === 3 && r.data[0] === 0xff && r.data[1] === 0x05 && r.data[2] === 0x01) {
+        this.safelink = true; this._up = 0; this._down = 0; break;
+      }
+    }
+    this.running = true;
+    this._loop();
+  }
+
+  async _sendSafe(bytes) {
+    if (!this.safelink) return this.radio.send(bytes);
+    const pk = new Uint8Array(bytes);
+    pk[0] = (pk[0] & 0xf3) | (this._up << 3) | (this._down << 2);
+    const r = await this.radio.send(pk);
+    r.fresh = true;
+    if (r.ack && r.data.length) {
+      if ((r.data[0] & 0x04) === this._down << 2) this._down ^= 1;
+      else r.fresh = false; // a retransmission of something we already have
+    }
+    if (r.ack) this._up ^= 1;
+    return r;
+  }
+
+  async _loop() {
+    let pending = null, lost = 0, idle = 0;
+    while (this.running) {
+      if (!pending) pending = this._next();
+      const out = pending || NULL_PACKET;
+      let ack;
+      try { ack = await this._sendSafe(out); } catch (e) { this._lose(`Crazyradio error: ${e.message}`); return; }
+      this._hist[this._hi] = ack.ack ? Math.max(0, 100 - ack.retry * 10) : 0;
+      this._hi = (this._hi + 1) % 100;
+      if (this._hi % 10 === 0) this.stats.quality = Math.round(this._hist.reduce((a, b) => a + b, 0) / 100);
+      this._cnt.up++;
+      if (!ack.ack) {
+        if (++lost >= 100) { this._lose('Too many packets lost: Crazyflie out of range or switched off'); return; }
+        continue; // resend the same packet
+      }
+      lost = 0;
+      pending = null;
+      if (!isEmptyPacket(ack.data) && ack.fresh !== false) {
+        this._cnt.down++;
+        idle = 0;
+        this.onPacket(ack.data);
+      } else if (out === NULL_PACKET && ++idle > 10) {
+        await this._waitForWork(idle > 100 ? 10 : 2); // both sides quiet: back off like cflib
+      }
+      this._countRates();
+    }
+  }
+
+  async close() { this.running = false; this._kick(); await sleep(30); await this.radio.close(); }
+}
+
+// ---------------------------------------------------------------------
+// Simulator: a pretend Crazyflie that speaks the same CRTP subset (TOC, log,
+// param, commander, supervisor, high-level commander) with simple physics.
+// Lets you practise with the PS5 controller and test the app without a drone.
+// ---------------------------------------------------------------------
+class SimLink extends Link {
+  constructor() {
+    super();
+    const L = (g, n, t) => ({ group: g, name: n, type: t });
+    this.logVars = [
+      L('stabilizer', 'roll', 7), L('stabilizer', 'pitch', 7), L('stabilizer', 'yaw', 7), L('stabilizer', 'thrust', 7),
+      L('stateEstimate', 'x', 7), L('stateEstimate', 'y', 7), L('stateEstimate', 'z', 7),
+      L('stateEstimate', 'vx', 7), L('stateEstimate', 'vy', 7), L('stateEstimate', 'vz', 7),
+      L('pm', 'vbat', 7), L('pm', 'state', 4), L('pm', 'batteryLevel', 1), L('radio', 'rssi', 1),
+      L('supervisor', 'info', 2), L('range', 'zrange', 2),
+      L('motor', 'm1', 2), L('motor', 'm2', 2), L('motor', 'm3', 2), L('motor', 'm4', 2),
+      L('acc', 'x', 7), L('acc', 'y', 7), L('acc', 'z', 7), L('gyro', 'x', 7), L('gyro', 'y', 7), L('gyro', 'z', 7),
+      L('baro', 'asl', 7), L('baro', 'temp', 7), L('baro', 'pressure', 7),
+      L('sys', 'canfly', 1), L('sys', 'isFlying', 1), L('sys', 'isTumbled', 1),
+    ];
+    const P = (g, n, t, v) => ({ group: g, name: n, type: t, value: v });
+    const RO = 0x40;
+    this.params = [
+      P('deck', 'bcFlow2', 0x08 | RO, 1), P('deck', 'bcZRanger2', 0x08 | RO, 0), P('deck', 'bcLighthouse4', 0x08 | RO, 0),
+      P('deck', 'bcLoco', 0x08 | RO, 0), P('deck', 'bcMultiranger', 0x08 | RO, 0), P('deck', 'bcLedRing', 0x08 | RO, 1),
+      P('deck', 'bcAI', 0x08 | RO, 0), P('commander', 'enHighLevel', 0x08, 0), P('stabilizer', 'estimator', 0x08, 2),
+      P('stabilizer', 'controller', 0x08, 1), P('stabilizer', 'stop', 0x08, 0), P('flightmode', 'stabModeYaw', 0x08, 0),
+      P('pid_attitude', 'roll_kp', 0x06, 6), P('pid_attitude', 'pitch_kp', 0x06, 6), P('pid_attitude', 'yaw_kp', 0x06, 6),
+      P('pid_rate', 'roll_kp', 0x06, 250), P('pid_rate', 'pitch_kp', 0x06, 250), P('pid_rate', 'yaw_kp', 0x06, 120),
+      P('ring', 'effect', 0x08, 6), P('ring', 'headlightEnable', 0x08, 0), P('supervisor', 'tmblChckEn', 0x08, 1),
+      P('cpu', 'flash', 0x09 | RO, 1024), P('sim', 'windGust', 0x06, 0.05),
+    ];
+    this.blocks = new Map();
+    this.s = { roll: 0, pitch: 0, yaw: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, thrust: 0, bat: 4.15, t0: performance.now() };
+    this.sp = { kind: 'none', t: 0 };
+    this.locked = false;
+    this.thrustLocked = true;
+    this.hl = null;
+  }
+  get name() { return 'Simulator'; }
+  get kind() { return 'sim'; }
+
+  async open() {
+    this.running = true;
+    this.stats.quality = 100;
+    this._off = ticker.on('tick', () => this._step());
+    setTimeout(() => this._print('SYS: Crazyflie simulator running (firmware 2026.08 protocol)\nSYS: Flow deck v2 and LED ring detected\n'), 50);
+  }
+  async close() { this.running = false; this._off?.(); }
+
+  send(pk) { this._cnt.up++; this._rx(pk); }
+  sendSetpoint(pk) { this._cnt.up++; this._rx(pk); }
+  sendUrgent(pk) { this._cnt.up++; this._rx(pk); }
+
+  _reply(port, ch, bytes) {
+    const pk = new Uint8Array(1 + bytes.length);
+    pk[0] = (port << 4) | 0x0c | ch;
+    pk.set(bytes, 1);
+    setTimeout(() => { if (this.running) { this._cnt.down++; this.onPacket(pk); } }, 2);
+  }
+  _print(text) {
+    const b = Array.from(text, (c) => c.charCodeAt(0));
+    for (let i = 0; i < b.length; i += 30) this._reply(0, 0, b.slice(i, i + 30));
+  }
+  _tocItem(list, i) {
+    const it = list[i];
+    return [2, i & 0xff, i >> 8, it.type, ...Array.from(it.group, (c) => c.charCodeAt(0)), 0, ...Array.from(it.name, (c) => c.charCodeAt(0)), 0];
+  }
+  _pval(p) {
+    const t = PARAM_TYPES[p.type & 0x0f], b = new Uint8Array(t.size);
+    t.set(new DataView(b.buffer), 0, p.value);
+    return Array.from(b);
+  }
+
+  _rx(pk) {
+    if (!this.running) return;
+    const port = pk[0] >> 4, ch = pk[0] & 3, d = pk.subarray(1), f = new DataView(d.buffer, d.byteOffset, d.byteLength);
+    const now = performance.now();
+    switch (port) {
+      case 13: // platform
+        if (ch === 1 && d[0] === 0) this._reply(13, 1, [0, 12, 0, 0, 0]);
+        if (ch === 1 && d[0] === 1) this._reply(13, 1, [1, ...Array.from('2026.08-sim', (c) => c.charCodeAt(0)), 0]);
+        if (ch === 1 && d[0] === 2) this._reply(13, 1, [2, ...Array.from('Simulated Crazyflie 2.1+', (c) => c.charCodeAt(0)), 0]);
+        break;
+      case 5: // log
+        if (ch === 0 && d[0] === 3) this._reply(5, 0, [3, this.logVars.length, 0, 0x51, 0x15, 0x0f, 0xc0, 16, 128]);
+        if (ch === 0 && d[0] === 2) { const i = u16(d, 1); if (i < this.logVars.length) this._reply(5, 0, this._tocItem(this.logVars, i)); }
+        if (ch === 1) {
+          const cmd = d[0], id = d[1];
+          if (cmd === 5) { this.blocks.clear(); this._reply(5, 1, [5, 0, 0]); }
+          if (cmd === 6) {
+            if (this.blocks.has(id)) { this._reply(5, 1, [6, id, 17]); break; }
+            const vars = [];
+            for (let o = 2; o + 2 < d.length; o += 3) vars.push(this.logVars[u16(d, o + 1)]);
+            this.blocks.set(id, { vars, period: 0, acc: 0 });
+            this._reply(5, 1, [6, id, 0]);
+          }
+          if (cmd === 3) { const b = this.blocks.get(id); if (b) b.period = d[2] * 10; this._reply(5, 1, [3, id, b ? 0 : 2]); }
+          if (cmd === 4) { const b = this.blocks.get(id); if (b) b.period = 0; this._reply(5, 1, [4, id, 0]); }
+          if (cmd === 2) { this.blocks.delete(id); this._reply(5, 1, [2, id, 0]); }
+        }
+        break;
+      case 2: { // param
+        if (ch === 0 && d[0] === 3) this._reply(2, 0, [3, this.params.length, 0, 0x77, 0x2a, 0x0f, 0xc0]);
+        if (ch === 0 && d[0] === 2) { const i = u16(d, 1); if (i < this.params.length) this._reply(2, 0, this._tocItem(this.params, i)); }
+        const p = this.params[u16(d, 0)];
+        if (ch === 1 && p) this._reply(2, 1, [d[0], d[1], 0, ...this._pval(p)]);
+        if (ch === 2 && p) {
+          if (!(p.type & 0x40)) p.value = PARAM_TYPES[p.type & 0x0f].get(new DataView(d.buffer, d.byteOffset + 2), 0);
+          this._reply(2, 2, [d[0], d[1], ...this._pval(p)]);
+          if (p.name === 'stop' && p.value) this._estop();
+        }
+        if (ch === 3 && d[0] === 3) this._reply(2, 3, [3, d[1], d[2], 0]);
+        break;
+      }
+      case 3: { // RPYT
+        const thrust = f.getUint16(12, true);
+        if (thrust === 0) this.thrustLocked = false;
+        this.sp = { kind: 'rpyt', t: now, roll: f.getFloat32(0, true), pitch: f.getFloat32(4, true), yaw: f.getFloat32(8, true), thrust: this.thrustLocked ? 0 : thrust };
+        this.hl = null;
+        break;
+      }
+      case 7: // generic setpoints
+        if (ch === 1) { this.sp = { kind: 'none', t: 0 }; break; } // notifySetpointStop: hand over to HL
+        if (d[0] === 0) { this.sp = { kind: 'stop', t: now }; this.hl = null; break; }
+        if ([4, 9, 10, 8].includes(d[0])) {
+          const a = f.getFloat32(1, true), b = f.getFloat32(5, true), c = f.getFloat32(9, true), e = f.getFloat32(13, true);
+          this.sp = { kind: { 4: 'alt', 9: 'zdist', 10: 'hover', 8: 'vel' }[d[0]], t: now, a, b, c, e };
+          this.hl = null;
+        }
+        break;
+      case 8: // high-level commander
+        if (d[0] === 7) this.hl = { z0: this.s.z, z1: f.getFloat32(2, true), t0: now, dur: f.getFloat32(11, true) * 1000, land: false };
+        if (d[0] === 8) this.hl = { z0: this.s.z, z1: f.getFloat32(2, true), t0: now, dur: f.getFloat32(11, true) * 1000, land: true };
+        if (d[0] === 3) this.hl = null;
+        if (d[0] === 12) {
+          const s = this.s, rel = d[2], x = f.getFloat32(4, true), y = f.getFloat32(8, true), z = f.getFloat32(12, true);
+          this.hl = { x0: s.x, y0: s.y, z0: s.z, x1: rel ? s.x + x : x, y1: rel ? s.y + y : y, z1: rel ? s.z + z : z, t0: now, dur: f.getFloat32(20, true) * 1000 };
+        }
+        break;
+      case 9: // supervisor
+        if (ch === 0 && d[0] === 0x0c) { const v = this._info(); this._reply(9, 0, [0x8c, v & 0xff, v >> 8]); }
+        if (ch === 1 && d[0] === 0x01) this._reply(9, 1, [0x81, 1, 1]);
+        if (ch === 1 && d[0] === 0x03) this._estop();
+        break;
+      case 6: if (ch === 1 && d[0] === 3) this._estop(); break; // legacy e-stop
+    }
+  }
+
+  _estop() {
+    if (this.locked) return;
+    this.locked = true;
+    this.hl = null;
+    this._print('SUPERVISOR: Emergency stop! Motors locked. Restart the Crazyflie to fly again.\n');
+  }
+
+  _info() {
+    const s = this.s, flying = s.z > 0.02 && s.thrust > 0.05;
+    return (0 << 0) | (1 << 1) | (1 << 2) | ((this.locked ? 0 : 1) << 3) | ((flying ? 1 : 0) << 4) | ((this.locked ? 1 : 0) << 6);
+  }
+
+  _step() {
+    if (!this.running) return;
+    const dt = 0.01, g = 9.81, s = this.s, now = performance.now(), sp = this.sp;
+    const age = now - sp.t;
+    let dRoll = 0, dPitch = 0, yawRate = 0, thrust = 0, vzT = null, vT = null;
+    const zTo = (zt) => clamp((zt - s.z) * 2.2, -1, 1);
+    if (this.locked) thrust = 0;
+    else if (this.hl && sp.kind === 'none') {
+      const h = this.hl, k = clamp((now - h.t0) / Math.max(1, h.dur), 0, 1), e = k * k * (3 - 2 * k);
+      if (h.x1 !== undefined) vT = { wx: clamp((h.x0 + (h.x1 - h.x0) * e - s.x) * 2, -1, 1), wy: clamp((h.y0 + (h.y1 - h.y0) * e - s.y) * 2, -1, 1) };
+      vzT = zTo(h.z0 + (h.z1 - h.z0) * e);
+      if (h.land && k >= 1 && s.z < 0.06) { this.hl = null; vzT = null; }
+      if (!vT) vT = { wx: -s.vx * 0.5, wy: -s.vy * 0.5 };
+    } else if (sp.kind === 'none' || sp.kind === 'stop' || age > 2000) thrust = 0;
+    else if (sp.kind === 'rpyt') {
+      if (age < 500) { dRoll = sp.roll; dPitch = sp.pitch; yawRate = -sp.yaw; }
+      thrust = sp.thrust / 65535;
+    } else {
+      const { a, b, c, e } = sp;
+      if (sp.kind === 'alt') { dRoll = a; dPitch = b; yawRate = c; vzT = e; }
+      if (sp.kind === 'zdist') { dRoll = a; dPitch = b; yawRate = c; vzT = zTo(e); }
+      if (sp.kind === 'hover') { yawRate = c; vzT = zTo(e); vT = { bx: a, by: b }; }
+      if (sp.kind === 'vel') { yawRate = c; vzT = e; vT = { wx: a, wy: b }; }
+      if (age > 500) { dRoll = 0; dPitch = 0; yawRate = 0; vT = vT && { wx: 0, wy: 0 }; vzT = vzT === null ? null : -0.2; }
+    }
+    const yr = (s.yaw * Math.PI) / 180, cy = Math.cos(yr), sy = Math.sin(yr);
+    if (vT) {
+      let wx = vT.wx, wy = vT.wy;
+      if (vT.bx !== undefined) { wx = vT.bx * cy - vT.by * sy; wy = vT.bx * sy + vT.by * cy; }
+      const ex = (wx - s.vx) * 14, ey = (wy - s.vy) * 14;
+      const fx = ex * cy + ey * sy, fy = -ex * sy + ey * cy; // world -> body
+      dPitch = clamp(-fx, -20, 20); // nose up is positive, so forward needs negative pitch
+      dRoll = clamp(-fy, -20, 20);  // +y is left, rolling right is positive
+    }
+    if (vzT !== null && !this.locked) {
+      const az = (vzT - s.vz) * 5;
+      thrust = clamp((az + g) / (2.2 * g), 0, 1);
+      if (s.z <= 0 && vzT <= 0) thrust = 0;
+    }
+    const gust = (this.params.find((p) => p.name === 'windGust')?.value || 0) * (Math.sin(now / 900) + Math.sin(now / 370));
+    const k = Math.min(1, dt * 12);
+    s.roll += (dRoll - s.roll) * k + gust;
+    s.pitch += (dPitch - s.pitch) * k;
+    s.yaw += yawRate * dt;
+    if (s.yaw > 180) s.yaw -= 360;
+    if (s.yaw < -180) s.yaw += 360;
+    s.thrust = thrust;
+    const rr = (s.roll * Math.PI) / 180, pr = (s.pitch * Math.PI) / 180;
+    const lift = thrust * 2.2 * g;
+    const axB = lift > 0.1 ? -g * Math.tan(pr) : 0, ayB = lift > 0.1 ? -g * Math.tan(rr) : 0;
+    const ax = axB * cy - ayB * sy, ay = axB * sy + ayB * cy;
+    const az = lift * Math.cos(rr) * Math.cos(pr) - g;
+    if (s.z > 0 || az > 0) {
+      s.vx += (ax - s.vx * 0.6) * dt; s.vy += (ay - s.vy * 0.6) * dt; s.vz += (az - s.vz * 0.4) * dt;
+    }
+    s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
+    if (s.z <= 0) { s.z = 0; s.vz = Math.max(0, s.vz); s.vx *= 0.8; s.vy *= 0.8; if (thrust < 0.3) { s.roll *= 0.8; s.pitch *= 0.8; } }
+    s.bat = Math.max(3.0, s.bat - dt * (0.00035 + thrust * 0.0011));
+    this.acc = { x: axB / g + (Math.random() - 0.5) * 0.02, y: ayB / g + (Math.random() - 0.5) * 0.02, z: (az + g) / g + (Math.random() - 0.5) * 0.02 };
+    this.gyro = { x: (dRoll - s.roll) * k * 100, y: (dPitch - s.pitch) * k * 100, z: yawRate };
+    for (const [id, b] of this.blocks) {
+      if (!b.period) continue;
+      b.acc += 10;
+      if (b.acc < b.period) continue;
+      b.acc = 0;
+      this._emitBlock(id, b);
+    }
+    this._countRates();
+  }
+
+  _value(v) {
+    const s = this.s, name = `${v.group}.${v.name}`, sag = s.thrust * 0.35;
+    const m = (sign1, sign2) => (this.locked ? 0 : clamp(s.thrust * 65535 + sign1 * s.roll * 300 + sign2 * s.pitch * 300, 0, 65535));
+    switch (name) {
+      case 'stabilizer.roll': return s.roll;
+      case 'stabilizer.pitch': return s.pitch;
+      case 'stabilizer.yaw': return s.yaw;
+      case 'stabilizer.thrust': return s.thrust * 65535;
+      case 'stateEstimate.x': return s.x;
+      case 'stateEstimate.y': return s.y;
+      case 'stateEstimate.z': return s.z;
+      case 'stateEstimate.vx': return s.vx;
+      case 'stateEstimate.vy': return s.vy;
+      case 'stateEstimate.vz': return s.vz;
+      case 'pm.vbat': return s.bat - sag;
+      case 'pm.state': return s.bat < 3.35 ? 3 : 0;
+      case 'pm.batteryLevel': return Math.round(clamp((s.bat - 3.3) / (4.15 - 3.3), 0, 1) * 100);
+      case 'radio.rssi': return 40;
+      case 'supervisor.info': return this._info();
+      case 'range.zrange': return Math.round(s.z * 1000 + 8);
+      case 'motor.m1': return m(-1, 1);
+      case 'motor.m2': return m(-1, -1);
+      case 'motor.m3': return m(1, -1);
+      case 'motor.m4': return m(1, 1);
+      case 'acc.x': return this.acc.x;
+      case 'acc.y': return this.acc.y;
+      case 'acc.z': return this.acc.z;
+      case 'gyro.x': return this.gyro.x;
+      case 'gyro.y': return this.gyro.y;
+      case 'gyro.z': return this.gyro.z;
+      case 'baro.asl': return 120 + s.z + (Math.random() - 0.5) * 0.08;
+      case 'baro.temp': return 24.5;
+      case 'baro.pressure': return 1013.25 - s.z * 0.12;
+      case 'sys.canfly': return this.locked ? 0 : 1;
+      case 'sys.isFlying': return s.z > 0.02 ? 1 : 0;
+      default: return 0;
+    }
+  }
+
+  _emitBlock(id, b) {
+    const ts = Math.round(performance.now() - this.s.t0) & 0xffffff;
+    const out = [id, ts & 0xff, (ts >> 8) & 0xff, ts >> 16];
+    for (const v of b.vars) {
+      const t = LOG_TYPES[v.type], buf = new Uint8Array(t.size), dv = new DataView(buf.buffer), x = this._value(v);
+      ({ 1: () => dv.setUint8(0, x), 2: () => dv.setUint16(0, x, true), 3: () => dv.setUint32(0, x, true), 4: () => dv.setInt8(0, x),
+        5: () => dv.setInt16(0, x, true), 6: () => dv.setInt32(0, x, true), 7: () => dv.setFloat32(0, x, true), 8: () => dv.setUint16(0, f32ToF16(x), true) })[v.type]();
+      out.push(...buf);
+    }
+    this._reply(5, 2, out);
+  }
+}
+
+// =====================================================================
+// CRTP protocol
+// =====================================================================
+const PORT = { CONSOLE: 0, PARAM: 2, COMMANDER: 3, MEM: 4, LOG: 5, LOCALIZATION: 6, GENERIC: 7, HL: 8, SUPERVISOR: 9, PLATFORM: 13, LINK: 15 };
+const crtpHeader = (port, ch) => ((port & 0x0f) << 4) | 0x0c | (ch & 0x03);
+const SUP_BITS = ['canBeArmed', 'isArmed', 'isAutoArmed', 'canFly', 'isFlying', 'isTumbled', 'isLocked', 'isCrashed', 'hlActive', 'hlTrajFinished', 'hlDisabled'];
+
+// TOC v2 (shared by log and param). Cached by CRC so reconnects are instant.
+async function fetchToc(cf, port, kind, onProgress) {
+  const info = await cf.request(port, 0, [3], (ch, d) => ch === 0 && d[0] === 3);
+  const count = u16(info, 1), crc = u32(info, 3);
+  const key = `cfdeck.toc.${kind}.${crc.toString(16)}.${count}`;
+  let items = null;
+  try { items = JSON.parse(localStorage.getItem(key)); } catch { items = null; }
+  if (!Array.isArray(items) || items.length !== count) {
+    items = new Array(count);
+    let done = 0;
+    await pool(count, 6, async (i) => {
+      const d = await cf.request(port, 0, [2, i & 0xff, i >> 8], (ch, p) => ch === 0 && p[0] === 2 && u16(p, 1) === i);
+      const [group, o] = cstr(d, 4);
+      items[i] = { id: i, type: d[3], group, name: cstr(d, o)[0] };
+      if (++done % 4 === 0) onProgress?.(done / count);
+    });
+    try { localStorage.setItem(key, JSON.stringify(items)); } catch { /* quota: just no cache */ }
+  }
+  onProgress?.(1);
+  const byName = new Map();
+  for (const it of items) { it.full = `${it.group}.${it.name}`; byName.set(it.full, it); }
+  return { crc, count, items, byName };
+}
+
+const LOG_TYPES = {
+  1: { name: 'uint8_t', size: 1, read: (dv, o) => dv.getUint8(o) },
+  2: { name: 'uint16_t', size: 2, read: (dv, o) => dv.getUint16(o, true) },
+  3: { name: 'uint32_t', size: 4, read: (dv, o) => dv.getUint32(o, true) },
+  4: { name: 'int8_t', size: 1, read: (dv, o) => dv.getInt8(o) },
+  5: { name: 'int16_t', size: 2, read: (dv, o) => dv.getInt16(o, true) },
+  6: { name: 'int32_t', size: 4, read: (dv, o) => dv.getInt32(o, true) },
+  7: { name: 'float', size: 4, read: (dv, o) => dv.getFloat32(o, true) },
+  8: { name: 'FP16', size: 2, read: (dv, o) => f16ToF32(dv.getUint16(o, true)) },
+};
+const LOG_ERR = { 2: 'variable not found', 7: 'block too large', 12: 'out of log memory', 17: 'block already exists' };
+
+// Logging (port 5). Matches crazyflie-firmware src/modules/src/log.c.
+class Log {
+  constructor(cf) {
+    this.cf = cf;
+    this.toc = null;
+    this.blocks = new Map();
+    this.configs = new Set();
+    cf.onPort(PORT.LOG, (ch, d) => { if (ch === 2) this._onData(d); });
+  }
+  async fetchToc(p) { this.toc = await fetchToc(this.cf, PORT.LOG, 'log', p); for (const it of this.toc.items) it.type &= 0x0f; }
+  has(n) { return !!this.toc?.byName.has(n); }
+  async reset() { await this.cf.request(PORT.LOG, 1, [5], (ch, d) => ch === 1 && d[0] === 5); this.blocks.clear(); }
+  _freeId() {
+    for (let i = 0; i < 16; i++) if (!this.blocks.has(i)) return i;
+    throw new Error('All 16 log blocks are in use. Stop one first.');
+  }
+  async _cmd(pk) {
+    const d = await this.cf.request(PORT.LOG, 1, pk, (ch, r) => ch === 1 && r[0] === pk[0] && r[1] === pk[1]);
+    if (d[2] !== 0 && !(pk[0] === 6 && d[2] === 17)) throw new Error(`Log setup failed: ${LOG_ERR[d[2]] || 'error ' + d[2]}`);
+  }
+  // Start streaming `names` every periodMs. Unknown names are skipped; big
+  // configs are split across several firmware blocks (26 data bytes each).
+  async start(label, names, periodMs, onData) {
+    const vars = [...new Set(names)].map((n) => this.toc?.byName.get(n)).filter(Boolean);
+    if (!vars.length) return null;
+    const cfg = { label, vars, periodMs, onData, values: {}, subs: [] };
+    const groups = [];
+    let cur = [], bytes = 0;
+    for (const v of vars) {
+      const sz = LOG_TYPES[v.type].size;
+      if (bytes + sz > 26 || cur.length >= 9) { groups.push(cur); cur = []; bytes = 0; }
+      cur.push(v); bytes += sz;
+    }
+    if (cur.length) groups.push(cur);
+    const period = clamp(Math.round(periodMs / 10), 1, 255);
+    try {
+      for (const g of groups) {
+        const id = this._freeId();
+        const sub = { id, vars: g, cfg };
+        this.blocks.set(id, sub);
+        cfg.subs.push(sub);
+        const pk = [6, id];
+        for (const v of g) pk.push(v.type, v.id & 0xff, v.id >> 8);
+        await this._cmd(pk);
+        await this._cmd([3, id, period]);
+      }
+    } catch (e) { await this.stop(cfg); throw e; }
+    this.configs.add(cfg);
+    return cfg;
+  }
+  async stop(cfg) {
+    if (!cfg) return;
+    this.configs.delete(cfg);
+    const subs = cfg.subs;
+    cfg.subs = [];
+    for (const sub of subs) {
+      this.blocks.delete(sub.id);
+      if (this.cf.link) { try { await this._cmd([2, sub.id]); } catch { /* never created */ } }
+    }
+  }
+  _onData(d) {
+    const sub = this.blocks.get(d[0]);
+    if (!sub) return;
+    const dv = new DataView(d.buffer, d.byteOffset, d.byteLength), vals = sub.cfg.values;
+    let o = 4;
+    for (const v of sub.vars) {
+      const t = LOG_TYPES[v.type];
+      if (o + t.size > d.length) break;
+      vals[v.full] = t.read(dv, o);
+      o += t.size;
+    }
+    sub.cfg.onData(vals, sub.vars, d[1] | (d[2] << 8) | (d[3] << 16));
+  }
+  _clear() { this.blocks.clear(); this.configs.clear(); }
+}
+
+const PARAM_TYPES = {
+  0x08: { name: 'uint8_t', size: 1, get: (dv, o) => dv.getUint8(o), set: (dv, o, v) => dv.setUint8(o, v) },
+  0x09: { name: 'uint16_t', size: 2, get: (dv, o) => dv.getUint16(o, true), set: (dv, o, v) => dv.setUint16(o, v, true) },
+  0x0a: { name: 'uint32_t', size: 4, get: (dv, o) => dv.getUint32(o, true), set: (dv, o, v) => dv.setUint32(o, v, true) },
+  0x0b: { name: 'uint64_t', size: 8, get: (dv, o) => Number(dv.getBigUint64(o, true)), set: (dv, o, v) => dv.setBigUint64(o, BigInt(Math.round(v)), true) },
+  0x00: { name: 'int8_t', size: 1, get: (dv, o) => dv.getInt8(o), set: (dv, o, v) => dv.setInt8(o, v) },
+  0x01: { name: 'int16_t', size: 2, get: (dv, o) => dv.getInt16(o, true), set: (dv, o, v) => dv.setInt16(o, v, true) },
+  0x02: { name: 'int32_t', size: 4, get: (dv, o) => dv.getInt32(o, true), set: (dv, o, v) => dv.setInt32(o, v, true) },
+  0x03: { name: 'int64_t', size: 8, get: (dv, o) => Number(dv.getBigInt64(o, true)), set: (dv, o, v) => dv.setBigInt64(o, BigInt(Math.round(v)), true) },
+  0x05: { name: 'FP16', size: 2, get: (dv, o) => f16ToF32(dv.getUint16(o, true)), set: (dv, o, v) => dv.setUint16(o, f32ToF16(v), true) },
+  0x06: { name: 'float', size: 4, get: (dv, o) => dv.getFloat32(o, true), set: (dv, o, v) => dv.setFloat32(o, v, true) },
+  0x07: { name: 'double', size: 8, get: (dv, o) => dv.getFloat64(o, true), set: (dv, o, v) => dv.setFloat64(o, v, true) },
+};
+
+// Parameters (port 2). Matches cflib crazyflie/param.py, protocol v2.
+class Param extends Emitter {
+  constructor(cf) {
+    super();
+    this.cf = cf;
+    this.toc = null;
+    this.values = new Map();
+    cf.onPort(PORT.PARAM, (ch, d) => { if (ch === 3 && d[0] === 1) this._update(u16(d, 1), d, 3); });
+  }
+  async fetchToc(p) {
+    this.toc = await fetchToc(this.cf, PORT.PARAM, 'param', p);
+    for (const it of this.toc.items) {
+      it.ptype = it.type & 0x0f;
+      it.readonly = (it.type & 0x40) !== 0;
+      it.tname = PARAM_TYPES[it.ptype]?.name || '?';
+      it.isFloat = it.ptype >= 0x05 && it.ptype <= 0x07;
+    }
+    this.values.clear();
+  }
+  has(n) { return !!this.toc?.byName.has(n); }
+  get(n) { return this.values.get(n); }
+  _update(id, d, o) {
+    const el = this.toc?.items[id], t = el && PARAM_TYPES[el.ptype];
+    if (!t || o + t.size > d.length) return;
+    const v = t.get(new DataView(d.buffer, d.byteOffset, d.byteLength), o);
+    this.values.set(el.full, v);
+    this.emit('update', el.full, v);
+  }
+  async read(name) {
+    const el = this.toc.byName.get(name);
+    if (!el) throw new Error(`Unknown parameter ${name}`);
+    const d = await this.cf.request(PORT.PARAM, 1, [el.id & 0xff, el.id >> 8], (ch, r) => ch === 1 && u16(r, 0) === el.id);
+    if (d[2] === 0) this._update(el.id, d, 3);
+    return this.values.get(name);
+  }
+  async readMany(names, width = 4, onProgress) {
+    let done = 0;
+    await pool(names.length, width, async (i) => {
+      try { await this.read(names[i]); } catch { /* unreadable: skip */ }
+      if (++done % 4 === 0) onProgress?.(done / names.length);
+    });
+    onProgress?.(1);
+  }
+  async set(name, value) {
+    const el = this.toc?.byName.get(name);
+    if (!el) throw new Error(`This firmware has no parameter "${name}"`);
+    if (el.readonly) throw new Error(`${name} is read-only`);
+    const t = PARAM_TYPES[el.ptype], buf = new Uint8Array(2 + t.size), dv = new DataView(buf.buffer);
+    const num = Number(value);
+    if (!Number.isFinite(num)) throw new Error(`"${value}" is not a number`);
+    dv.setUint16(0, el.id, true);
+    t.set(dv, 2, el.isFloat ? num : Math.round(num));
+    const d = await this.cf.request(PORT.PARAM, 2, buf, (ch, r) => ch === 2 && u16(r, 0) === el.id);
+    this._update(el.id, d, 2);
+    return this.values.get(name);
+  }
+  async persist(name) {
+    const el = this.toc.byName.get(name);
+    const d = await this.cf.request(PORT.PARAM, 3, [3, el.id & 0xff, el.id >> 8], (ch, r) => ch === 3 && r[0] === 3 && u16(r, 1) === el.id);
+    return d[3] === 0;
+  }
+}
+
+// Setpoints. Inputs are pilot values: roll>0 bank right, pitch>0 nose down
+// (fly forward), yaw>0 turn right (clockwise), vx forward, vy right.
+// Signs follow cfclient + cflib exactly (see commander.py / input/__init__.py).
+class Commander {
+  constructor(cf) { this.cf = cf; this.last = null; }
+  get legacy() { return this.cf.protocolVersion <= 8; }
+  _out(port, ch, bytes, info) { this.cf.sendSetpoint(port, ch, bytes); this.last = { ...info, bytes: [crtpHeader(port, ch), ...bytes] }; }
+  _generic(type, a, b, c, d, info) { this._out(PORT.GENERIC, 0, new Packer(17).u8(type).f32(a).f32(b).f32(c).f32(d).bytes(), info); }
+
+  rpyt(roll, pitch, yaw, thrust) {
+    thrust = clamp(Math.round(thrust), 0, 65535);
+    this._out(PORT.COMMANDER, 0, new Packer(14).f32(roll).f32(-pitch).f32(yaw).u16(thrust).bytes(),
+      { type: 'Manual (RPYT)', roll, pitch, yaw, thrust: `${thrust} (${((thrust / 65535) * 100).toFixed(0)}%)`, tl: 'Thrust' });
+  }
+  altHold(roll, pitch, yaw, vz) {
+    this._generic(4, roll, -pitch, -yaw, vz, { type: 'Altitude hold', roll, pitch, yaw, thrust: `${vz.toFixed(2)} m/s`, tl: 'Climb rate' });
+  }
+  zDistance(roll, pitch, yaw, z) {
+    const info = { type: 'Height hold', roll, pitch, yaw, thrust: `${z.toFixed(2)} m`, tl: 'Height' };
+    if (this.legacy) this._generic(2, roll, -pitch, yaw, z, info); else this._generic(9, roll, -pitch, -yaw, z, info);
+  }
+  hover(vx, vy, yaw, z) {
+    const info = { type: 'Hover', roll: `${vy.toFixed(2)} m/s`, pitch: `${vx.toFixed(2)} m/s`, yaw, thrust: `${z.toFixed(2)} m`, tl: 'Height' };
+    if (this.legacy) this._generic(5, vx, -vy, yaw, z, info); else this._generic(10, vx, -vy, -yaw, z, info);
+  }
+  velocityWorld(vx, vy, vz, yaw) {
+    const info = { type: 'Position hold', roll: `${vy.toFixed(2)} m/s`, pitch: `${vx.toFixed(2)} m/s`, yaw, thrust: `${vz.toFixed(2)} m/s`, tl: 'Climb rate' };
+    if (this.legacy) this._generic(1, vx, -vy, vz, yaw, info); else this._generic(8, vx, -vy, vz, -yaw, info);
+  }
+  stop() { this._out(PORT.GENERIC, 0, new Uint8Array([0]), { type: 'Stop (motors off)', roll: 0, pitch: 0, yaw: 0, thrust: 0, tl: 'Thrust' }); }
+  notifyStop(ms = 0) { this.cf.send(PORT.GENERIC, 1, new Packer(5).u8(0).u32(ms).bytes()); }
+  // High-level commander (needs a position estimate: Flow, Lighthouse, Loco)
+  hlTakeoff(h, dur) { this.cf.send(PORT.HL, 0, new Packer(16).u8(7).u8(0).f32(h).f32(0).u8(1).f32(dur).bytes()); }
+  hlLand(h, dur) { this.cf.send(PORT.HL, 0, new Packer(16).u8(8).u8(0).f32(h).f32(0).u8(1).f32(dur).bytes()); }
+  hlStop() { this.cf.send(PORT.HL, 0, new Uint8Array([3, 0])); }
+  hlGoTo(x, y, z, yawDeg, dur, relative = true) {
+    this.cf.send(PORT.HL, 0, new Packer(24).u8(12).u8(0).u8(relative ? 1 : 0).u8(0).f32(x).f32(y).f32(z).f32((yawDeg * Math.PI) / 180).f32(dur).bytes());
+  }
+}
+
+class Crazyflie extends Emitter {
+  constructor() {
+    super();
+    this.link = null;
+    this.connected = false;
+    this.protocolVersion = -1;
+    this.firmware = '';
+    this.deviceType = '';
+    this._pending = [];
+    this._ports = new Map();
+    this.log = new Log(this);
+    this.param = new Param(this);
+    this.commander = new Commander(this);
+    this._con = '';
+    this.onPort(PORT.CONSOLE, (ch, d) => this._console(d));
+  }
+  onPort(port, fn) { if (!this._ports.has(port)) this._ports.set(port, []); this._ports.get(port).push(fn); }
+  _pk(port, ch, data) { const pk = new Uint8Array(1 + data.length); pk[0] = crtpHeader(port, ch); pk.set(data, 1); return pk; }
+  send(port, ch, data) { this.link?.send(this._pk(port, ch, data)); }
+  sendSetpoint(port, ch, data) { this.link?.sendSetpoint(this._pk(port, ch, data)); }
+
+  // Send, then resolve with the first reply where match(channel, payload) is true.
+  request(port, ch, data, match, { timeout, retries = 10 } = {}) {
+    timeout ??= this.link?.kind === 'ble' ? 700 : 300;
+    return new Promise((resolve, reject) => {
+      const p = { port, match, resolve, reject, tries: 0, timer: 0 };
+      const attempt = () => {
+        if (!this.link) { this._drop(p); reject(new Error('Not connected')); return; }
+        if (p.tries++ > retries) { this._drop(p); reject(new Error(`No answer from the Crazyflie (port ${port})`)); return; }
+        this.send(port, ch, data);
+        p.timer = setTimeout(attempt, timeout);
+      };
+      this._pending.push(p);
+      attempt();
+    });
+  }
+  _drop(p) { clearTimeout(p.timer); const i = this._pending.indexOf(p); if (i >= 0) this._pending.splice(i, 1); }
+  _dispatch(raw) {
+    const port = raw[0] >> 4, ch = raw[0] & 3, d = raw.subarray(1);
+    for (const p of this._pending) {
+      if (p.port === port && p.match(ch, d)) { this._drop(p); p.resolve(d); return; }
+    }
+    const hs = this._ports.get(port);
+    if (hs) for (const fn of hs) fn(ch, d);
+  }
+  _console(d) {
+    this._con += String.fromCharCode(...d);
+    let i;
+    while ((i = this._con.indexOf('\n')) >= 0) { this.emit('console', this._con.slice(0, i)); this._con = this._con.slice(i + 1); }
+    if (this._con.length > 400) { this.emit('console', this._con); this._con = ''; }
+  }
+
+  // Phase 1: open the link and read the protocol version. After this you can fly.
+  async connect(link) {
+    if (this.link) await this.disconnect();
+    this.link = link;
+    link.onPacket = (pk) => this._dispatch(pk);
+    link.onLost = (why) => this._lost(why);
+    try {
+      await link.open();
+      const pv = await this.request(PORT.PLATFORM, 1, [0], (ch, d) => ch === 1 && d[0] === 0, { retries: 15 });
+      this.protocolVersion = u32(pv, 1);
+      try {
+        this.firmware = cstr(await this.request(PORT.PLATFORM, 1, [1], (ch, d) => ch === 1 && d[0] === 1, { retries: 3 }), 1)[0];
+        this.deviceType = cstr(await this.request(PORT.PLATFORM, 1, [2], (ch, d) => ch === 1 && d[0] === 2, { retries: 3 }), 1)[0];
+      } catch { /* old firmware: optional */ }
+    } catch (e) {
+      const l = this.link;
+      this._teardown();
+      try { await l?.close(); } catch { /* ignore */ }
+      throw e;
+    }
+    this.connected = true;
+    this.emit('connected');
+  }
+
+  // Phase 2 (background): tables of contents for logging and parameters.
+  async loadTocs(progress) {
+    await this.log.fetchToc((f) => progress('Downloading log table', f * 0.5));
+    await this.log.reset();
+    this.emit('log-ready');
+    await this.param.fetchToc((f) => progress('Downloading parameter table', 0.5 + f * 0.5));
+    this.emit('param-ready');
+  }
+
+  _lost(why) { const was = !!this.link; this._teardown(); if (was) this.emit('lost', why); }
+  _teardown() {
+    for (const p of [...this._pending]) { this._drop(p); p.reject(new Error('Disconnected')); }
+    this.connected = false;
+    this.link = null;
+    this.log._clear();
+  }
+  async disconnect() {
+    const link = this.link;
+    if (!link) return;
+    this._teardown();
+    await link.close();
+    this.emit('disconnected');
+  }
+
+  // Supervisor: arming, crash recovery, emergency stop (protocol >= 12), with
+  // the legacy platform/localization fallbacks for older firmware.
+  get legacySup() { return this.protocolVersion < 12; }
+  arm(on) { if (this.legacySup) this.send(PORT.PLATFORM, 0, [1, on ? 1 : 0]); else this.send(PORT.SUPERVISOR, 1, [0x01, on ? 1 : 0]); }
+  recover() { if (this.legacySup) this.send(PORT.PLATFORM, 0, [2]); else this.send(PORT.SUPERVISOR, 1, [0x02]); }
+  emergencyStop() {
+    if (!this.link) return;
+    const pk = this.legacySup ? this._pk(PORT.LOCALIZATION, 1, [3]) : this._pk(PORT.SUPERVISOR, 1, [0x03]);
+    for (let i = 0; i < 3; i++) this.link.sendUrgent(pk);
+  }
+  async readSupervisor() {
+    const d = await this.request(PORT.SUPERVISOR, 0, [0x0c], (ch, r) => ch === 0 && r[0] === 0x8c, { retries: 2 });
+    return u16(d, 1);
+  }
+  static decodeSup(bits) { const o = {}; SUP_BITS.forEach((n, i) => { o[n] = !!(bits & (1 << i)); }); return o; }
+}
+
+// =====================================================================
+// Settings
+// =====================================================================
+const PRESETS = {
+  beginner: { maxAngle: 12, maxYaw: 90, maxThrust: 60, maxVel: 0.3, maxVz: 0.3 },
+  normal: { maxAngle: 20, maxYaw: 150, maxThrust: 75, maxVel: 0.5, maxVz: 0.5 },
+  sport: { maxAngle: 32, maxYaw: 260, maxThrust: 92, maxVel: 1.0, maxVz: 0.9 },
+};
+// Standard Gamepad API indices for a PS5 DualSense in Chrome/Edge:
+// 0 ✕  1 ○  2 □  3 △  4 L1  5 R1  6 L2  7 R2  8 Create  9 Options  10 L3  11 R3
+// 12 ↑  13 ↓  14 ←  15 →  16 PS  17 touchpad
+const BTN_NAMES = ['✕ Cross', '○ Circle', '□ Square', '△ Triangle', 'L1', 'R1', 'L2', 'R2', 'Create', 'Options', 'L3', 'R3', 'D-pad ↑', 'D-pad ↓', 'D-pad ←', 'D-pad →', 'PS', 'Touchpad'];
+const ACTIONS = {
+  estop: 'Emergency stop', arm: 'Arm / disarm', takeoff: 'Take off / land', mode: 'Next flight mode', slow: 'Precision (hold)',
+  trimUp: 'Trim nose down', trimDown: 'Trim nose up', trimLeft: 'Trim roll left', trimRight: 'Trim roll right', trimReset: 'Reset trim',
+};
+const DEFAULT_MAP = { estop: 1, arm: 3, takeoff: 0, mode: 2, slow: 4, trimUp: 12, trimDown: 13, trimLeft: 14, trimRight: 15, trimReset: 8 };
+const DEFAULTS = {
+  link: 'ble', preset: 'normal', ...PRESETS.normal, minThrust: 20, slewLimit: 45, slewRate: 30,
+  takeoffHeight: 0.4, maxHeight: 1.5, landVel: 0.25, failsafeLand: true, mode: 'manual',
+  stickMode: 2, thrustSource: 'stick', deadzone: 0.08, expo: 0.25, invertPitch: false, invertYaw: false,
+  rumble: true, keyboard: true, radioChannel: 80, radioRate: '2M', radioAddress: 'E7E7E7E7E7', bleRate: 100,
+  attPeriod: 50, statPeriod: 250, readAllParams: false, theme: 'dark', smooth: true, trimRoll: 0, trimPitch: 0,
+  map: { ...DEFAULT_MAP },
+};
+const settings = Object.assign(structuredClone(DEFAULTS), lsGet('settings', {}));
+settings.map = { ...DEFAULT_MAP, ...settings.map };
+const saveSettings = () => lsSet('settings', settings);
+
+// Latest telemetry values by "group.name"
+const tele = { v: Object.create(null), t: Object.create(null), get(n) { return this.v[n]; }, age(n) { return performance.now() - (this.t[n] || 0); } };
+
+// =====================================================================
+// Input: gamepad (PS5 DualSense or any standard gamepad) + keyboard
+// =====================================================================
+class Input extends Emitter {
+  constructor() {
+    super();
+    this.prev = [];
+    this.keys = new Set();
+    this.kbThrottle = 0;
+    this.capture = null; // action name waiting for a button press
+    this.padName = '';
+    addEventListener('gamepadconnected', (e) => this.emit('pad', e.gamepad));
+    addEventListener('gamepaddisconnected', (e) => this.emit('pad-lost', e.gamepad));
+    addEventListener('keydown', (e) => this._key(e, true));
+    addEventListener('keyup', (e) => this._key(e, false));
+    addEventListener('blur', () => this.keys.clear());
+  }
+  pad() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    let best = null;
+    for (const p of pads) {
+      if (!p || !p.connected) continue;
+      if (!best || /dualsense|054c|wireless controller/i.test(p.id)) best = p;
+    }
+    return best;
+  }
+  _key(e, down) {
+    const t = e.target, tag = t?.tagName;
+    // Only text entry swallows keys; sliders, checkboxes and buttons must not block Space (e-stop).
+    if (tag === 'TEXTAREA' || tag === 'SELECT' || (tag === 'INPUT' && !['range', 'checkbox', 'radio', 'button'].includes(t.type))) return;
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (down && !e.repeat) {
+      const act = { ' ': 'estop', t: 'arm', Enter: 'takeoff', m: 'mode' }[k];
+      if (act) {
+        e.preventDefault(); // stops Space/Enter from also "clicking" a focused button
+        if (tag === 'BUTTON' || tag === 'INPUT') t.blur();
+        this.emit('action', act, 'keyboard');
+      }
+      if (k === 'Escape' && this.capture) { this.capture = null; this.emit('capture-done'); }
+    }
+    if (['w', 's', 'a', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(k)) {
+      e.preventDefault();
+      if (down) this.keys.add(k); else this.keys.delete(k);
+    }
+  }
+  static shape(x, dz, expo) {
+    const a = Math.abs(x);
+    if (a < dz) return 0;
+    const v = Math.min(1, (a - dz) / (1 - dz));
+    return Math.sign(x) * ((1 - expo) * v + expo * v * v * v);
+  }
+  rumble(strength = 0.6, ms = 250) {
+    if (!settings.rumble) return;
+    const p = this.pad();
+    try { p?.vibrationActuator?.playEffect('dual-rumble', { duration: ms, strongMagnitude: strength, weakMagnitude: strength }); } catch { /* unsupported */ }
+  }
+  // Returns pilot inputs in [-1, 1] (throttle 0..1) and fires button actions.
+  read(dt) {
+    const p = document.hidden ? null : this.pad();
+    const out = { source: 'none', roll: 0, pitch: 0, yaw: 0, throttle: 0, climb: 0, slow: false, axes: [], buttons: [], id: '' };
+    if (p) {
+      out.source = 'pad';
+      out.id = p.id;
+      out.axes = Array.from(p.axes);
+      out.buttons = p.buttons.map((b) => b.value || (b.pressed ? 1 : 0));
+      const dz = settings.deadzone, ex = settings.expo, sh = (v) => Input.shape(v || 0, dz, ex);
+      const [LX, LY, RX, RY] = out.axes;
+      const m = Number(settings.stickMode);
+      let roll, pitch, yaw, thr;
+      if (m === 1) { yaw = LX; pitch = -LY; roll = RX; thr = -RY; }
+      else if (m === 3) { roll = LX; pitch = -LY; yaw = RX; thr = -RY; }
+      else if (m === 4) { roll = LX; thr = -LY; yaw = RX; pitch = -RY; }
+      else { yaw = LX; thr = -LY; roll = RX; pitch = -RY; }
+      out.roll = sh(roll);
+      out.pitch = sh(pitch) * (settings.invertPitch ? -1 : 1);
+      out.yaw = sh(yaw) * (settings.invertYaw ? -1 : 1);
+      out.climb = Input.shape(thr || 0, dz, 0);
+      out.throttle = settings.thrustSource === 'r2' ? (out.buttons[7] || 0) : Math.max(0, Input.shape(thr || 0, dz * 0.5, 0));
+      const map = settings.map;
+      out.slow = !!out.buttons[map.slow];
+      // Button edges -> actions (or a new binding while capturing)
+      out.buttons.forEach((v, i) => {
+        const down = v > 0.5, was = this.prev[i] > 0.5;
+        if (down && !was) {
+          if (this.capture) { settings.map[this.capture] = i; saveSettings(); this.capture = null; this.emit('capture-done'); return; }
+          for (const [act, idx] of Object.entries(map)) if (idx === i && act !== 'slow') this.emit('action', act, 'pad');
+        }
+      });
+      this.prev = out.buttons;
+    } else if (settings.keyboard && !document.hidden) {
+      const k = this.keys, has = (x) => (k.has(x) ? 1 : 0);
+      if (k.size || this.kbThrottle > 0) out.source = 'keys';
+      out.pitch = has('ArrowUp') - has('ArrowDown');
+      out.roll = has('ArrowRight') - has('ArrowLeft');
+      out.yaw = has('d') - has('a');
+      out.climb = has('w') - has('s');
+      this.kbThrottle = clamp(this.kbThrottle + out.climb * dt * 0.5, 0, 1);
+      out.throttle = this.kbThrottle;
+      out.keyboard = true;
+      this.prev = [];
+    }
+    return out;
+  }
+}
+
+// =====================================================================
+// Flight controller: turns pilot input into setpoints at 50 Hz.
+// =====================================================================
+const MODES = {
+  manual: { name: 'Manual', sub: 'Stabilized · any Crazyflie', help: 'Sticks tilt the drone; the throttle sets thrust. Lower the throttle fully after arming, then push it up gently. Needs practice!' },
+  althold: { name: 'Altitude hold', sub: 'Barometer', help: 'Centre the throttle stick to hold altitude (barometer, ±10–20 cm). Push up or down to climb or descend. You still steer to stop drift.' },
+  height: { name: 'Height hold', sub: 'Flow / Z-ranger deck', help: 'Holds height above the floor with the laser sensor. The right stick tilts the drone like Manual.' },
+  hover: { name: 'Hover', sub: 'Flow deck · easiest', help: 'Holds height and position by itself. The right stick sets speed: let go and it stops. Best mode for beginners.' },
+  poshold: { name: 'Position hold', sub: 'Lighthouse / Loco / Flow', help: 'Velocity control in room coordinates; pushing forward always flies the same direction in the room, whichever way the drone faces.' },
+};
+const Z_MODES = new Set(['height', 'hover']);   // these need a target height
+const ASSISTED = new Set(['althold', 'height', 'hover', 'poshold']);
+
+class Flight extends Emitter {
+  constructor(cf, input) {
+    super();
+    this.cf = cf;
+    this.input = input;
+    this.state = 'idle';
+    this.targetZ = 0;
+    this.lastThr = 0;
+    this.thrustLock = true;
+    this.t = performance.now();
+    this.stateT = this.t;
+    this.inp = { source: 'none' };
+    this.flightMs = 0;
+    this.lowBatT = 0;
+    this._acc = 0;
+    input.on('action', (a, src) => this.action(a, src));
+    ticker.on('tick', (now) => { this._acc += 10; if (this._acc >= 20) { this._acc = 0; this.tick(now); } });
+  }
+  get mode() { return settings.mode; }
+  get inFlight() { return ['takeoff', 'flying', 'landing', 'failsafe'].includes(this.state); }
+  setState(s, hint) {
+    if (this.state !== s) { this.state = s; this.stateT = performance.now(); this.emit('state', s); }
+    if (hint !== undefined) this.hint = hint;
+  }
+  height() {
+    const z = tele.get('stateEstimate.z');
+    return Number.isFinite(z) ? z : 0;
+  }
+  available(mode) {
+    const p = this.cf.param;
+    if (!p.toc) return { ok: true, why: '' }; // unknown yet
+    const deck = (n) => !!p.get('deck.' + n);
+    const flow = deck('bcFlow') || deck('bcFlow2');
+    const zr = flow || deck('bcZRanger') || deck('bcZRanger2');
+    const pos = deck('bcLighthouse4') || deck('bcLoco') || deck('bcDWM1000');
+    if (mode === 'height' && !zr) return { ok: false, why: 'needs a Flow or Z-ranger deck' };
+    if (mode === 'hover' && !(flow || pos)) return { ok: false, why: 'needs a Flow deck' };
+    if (mode === 'poshold' && !(flow || pos)) return { ok: false, why: 'needs Lighthouse, Loco or Flow deck' };
+    return { ok: true, why: '' };
+  }
+  setMode(mode, quiet) {
+    if (mode === settings.mode) return true;
+    const av = this.available(mode);
+    if (!av.ok) { if (!quiet) toast(`${MODES[mode].name} ${av.why}.`, 'warn'); return false; }
+    if (this.inFlight) {
+      if (!ASSISTED.has(mode) || this.state !== 'flying') { if (!quiet) toast('While flying you can only switch between assisted modes. Land first.', 'warn'); return false; }
+      if (Z_MODES.has(mode)) this.targetZ = clamp(this.height(), 0.15, settings.maxHeight);
+    }
+    settings.mode = mode;
+    saveSettings();
+    this.emit('mode', mode);
+    return true;
+  }
+  cycleMode() {
+    const order = Object.keys(MODES).filter((m) => this.available(m).ok && (!this.inFlight || ASSISTED.has(m)));
+    const i = order.indexOf(settings.mode);
+    this.setMode(order[(i + 1) % order.length]);
+  }
+
+  action(a, src) {
+    if (a === 'estop') return this.estop();
+    if (a === 'mode') return this.cycleMode();
+    if (a.startsWith('trim')) {
+      const s = 0.25;
+      if (a === 'trimUp') settings.trimPitch = +(settings.trimPitch + s).toFixed(2);
+      if (a === 'trimDown') settings.trimPitch = +(settings.trimPitch - s).toFixed(2);
+      if (a === 'trimRight') settings.trimRoll = +(settings.trimRoll + s).toFixed(2);
+      if (a === 'trimLeft') settings.trimRoll = +(settings.trimRoll - s).toFixed(2);
+      if (a === 'trimReset') { settings.trimRoll = 0; settings.trimPitch = 0; }
+      saveSettings();
+      this.emit('trim');
+      return;
+    }
+    if (!this.cf.connected) { toast('Connect to a Crazyflie first.', 'warn'); return; }
+    if (a === 'arm') {
+      if (this.state === 'disarmed' || this.state === 'idle') this.arm();
+      else if (this.state === 'armed') this.disarm();
+      else if (this.inFlight && ASSISTED.has(this.mode)) { toast('Landing first…'); this.land(); }
+      else if (this.inFlight) toast('Lower the throttle to land before disarming.', 'warn');
+      else if (this.state === 'estop') toast('Emergency stop is active: restart the Crazyflie and reconnect.', 'bad');
+    }
+    if (a === 'takeoff') {
+      if (!ASSISTED.has(this.mode)) { if (src !== 'keyboard') toast('Take-off/land is for assisted modes. In Manual, use the throttle.', 'warn'); return; }
+      if (this.state === 'armed') this.takeoff();
+      else if (this.state === 'disarmed') toast('Arm first (△ Triangle).', 'warn');
+      else if (this.state === 'takeoff' || this.state === 'flying') this.land();
+    }
+  }
+
+  arm() {
+    const sup = this.sup;
+    if (sup?.isLocked) { toast('The Crazyflie is locked after an emergency stop or crash. Restart it.', 'bad'); return; }
+    if (sup?.isTumbled) { toast('The Crazyflie is upside down. Turn it over first.', 'warn'); return; }
+    // Brushed Crazyflie 2.1 auto-arms; brushless ones need an explicit request.
+    if (!sup || (!sup.isAutoArmed && !sup.isArmed)) this.cf.arm(true);
+    this.thrustLock = true;
+    this.lastThr = 0;
+    this.targetZ = 0;
+    this.setState('armed');
+    this.input.rumble(0.35, 150);
+  }
+  disarm() {
+    this.cf.commander.stop();
+    this.cf.commander.notifyStop();
+    if (this.sup && !this.sup.isAutoArmed) this.cf.arm(false); // auto-armed drones would just re-arm
+    this.setState('disarmed');
+  }
+  takeoff() {
+    this.targetZ = Math.max(0, Math.min(this.height(), 0.05));
+    this.setState('takeoff');
+  }
+  land() { this.landZ0 = this.height(); this.setState('landing'); }
+  estop() {
+    this.cf.emergencyStop();
+    if (this.cf.connected) {
+      this.setState('estop');
+      this.input.rumble(1, 600);
+      toast('EMERGENCY STOP sent: motors off. Restart the Crazyflie to fly again.', 'bad');
+    }
+  }
+  onConnected() { this.setState('disarmed'); this.sup = null; this.flightMs = 0; }
+  onDisconnected() { this.setState('idle'); }
+
+  tick(now) {
+    const dt = clamp((now - this.t) / 1000, 0, 0.1);
+    this.t = now;
+    const inp = this.input.read(dt);
+    this.inp = inp;
+    if (!this.cf.connected) { if (this.state !== 'idle') this.setState('idle'); return; }
+    if (this.sup?.isLocked && this.state !== 'estop' && this.state !== 'disarmed') this.setState('estop');
+    if (this.state === 'idle' || this.state === 'disarmed' || this.state === 'estop') return;
+
+    const S = settings, c = this.cf.commander, mode = this.mode;
+    const k = inp.slow ? 0.5 : 1;
+    const lost = inp.source === 'none';
+    if (this.inFlight || this.state === 'armed') this.flightMs += this.inFlight ? dt * 1000 : 0;
+
+    // Failsafe: controller unplugged or tab hidden while flying
+    if (lost && (this.state === 'flying' || this.state === 'takeoff') && (ASSISTED.has(mode) ? S.failsafeLand : this.lastThr > 0)) {
+      this.landZ0 = this.height();
+      this.setState('failsafe');
+      toast(ASSISTED.has(mode) ? 'Controller lost: landing automatically.' : 'Controller lost: reducing thrust.', 'bad');
+    }
+
+    // Low battery warning
+    if (tele.get('pm.state') === 3 && now - this.lowBatT > 20000) {
+      this.lowBatT = now;
+      this.input.rumble(0.8, 500);
+      toast('Battery low: land now.', 'warn');
+    }
+
+    const rollDeg = inp.roll * S.maxAngle * k + S.trimRoll;
+    const pitchDeg = inp.pitch * S.maxAngle * k + S.trimPitch;
+    const yawRate = inp.yaw * S.maxYaw * k;
+    const vx = inp.pitch * S.maxVel * k, vy = inp.roll * S.maxVel * k;
+
+    if (mode === 'manual' || (this.state === 'armed' && ASSISTED.has(mode))) {
+      // ---- Manual stabilized, and "armed on the ground" for assisted modes ----
+      let thr = 0;
+      if (this.state === 'failsafe') {
+        thr = Math.max(0, this.lastThr - 15 * dt);
+        if (thr <= 0) this.setState('armed');
+        c.rpyt(S.trimRoll, S.trimPitch, 0, (thr / 100) * 65535);
+        this.lastThr = thr;
+        return;
+      }
+      if (mode === 'manual') {
+        const t = inp.throttle;
+        if (this.thrustLock) {
+          if (t <= 0.02) this.thrustLock = false;
+          else this.hint = 'Thrust locked: lower the throttle fully to unlock.';
+        }
+        if (!this.thrustLock) {
+          this.hint = '';
+          thr = t <= 0.02 ? 0 : S.minThrust + t * (S.maxThrust - S.minThrust);
+          if (thr < this.lastThr && this.lastThr > S.slewLimit) thr = Math.max(thr, this.lastThr - S.slewRate * dt);
+        }
+        this.lastThr = thr;
+        if (thr > 0 && this.state === 'armed') this.setState('flying');
+        if (this.state === 'flying' && thr === 0 && performance.now() - this.stateT > 800) this.setState('armed');
+        c.rpyt(thr > 0 ? rollDeg : 0, thr > 0 ? pitchDeg : 0, thr > 0 ? yawRate : 0, (thr / 100) * 65535);
+      } else {
+        // assisted mode, sitting on the ground: motors off, wait for take-off
+        this.hint = 'Press ✕ (or Enter) to take off, or push the throttle stick up.';
+        if (inp.climb > 0.6 && inp.source !== 'none') this.takeoff();
+        c.rpyt(0, 0, 0, 0);
+        this.lastThr = 0;
+      }
+      return;
+    }
+
+    // ---- Assisted modes in the air ----
+    const st = this.state;
+    const z = this.height();
+    let vz = 0;
+    if (st === 'takeoff') {
+      this.hint = 'Taking off…';
+      this.targetZ = Math.min(S.takeoffHeight, this.targetZ + 0.45 * dt);
+      vz = 0.4;
+      const done = Z_MODES.has(mode) ? this.targetZ >= S.takeoffHeight : (z >= S.takeoffHeight * 0.9 || now - this.stateT > 4000);
+      if (done) this.setState('flying', '');
+    } else if (st === 'flying') {
+      this.hint = '';
+      vz = inp.climb * S.maxVz * k;
+      this.targetZ = clamp(this.targetZ + vz * dt, 0.15, S.maxHeight);
+    } else if (st === 'landing' || st === 'failsafe') {
+      this.hint = st === 'failsafe' ? 'Controller lost: landing' : 'Landing…';
+      vz = -S.landVel;
+      this.targetZ = Math.max(0, this.targetZ - S.landVel * dt);
+      const timeUp = now - this.stateT > ((this.landZ0 || 1) / S.landVel) * 1000 + 3000;
+      if (this.targetZ > 0) this.zeroT = now;
+      // Only cut the motors on (or just above) the floor, or after the target
+      // has been at zero for a while (estimators can read a few cm high).
+      const down = Z_MODES.has(mode) ? (this.targetZ <= 0 && (z < 0.04 || now - this.zeroT > 1500)) || timeUp : z < 0.05 || timeUp;
+      if (down) { c.stop(); this.lastThr = 0; this.setState('armed'); this.input.rumble(0.3, 120); return; }
+    }
+    const lostIn = st === 'landing' || st === 'failsafe' || st === 'takeoff';
+    const r = lostIn ? S.trimRoll : rollDeg, p = lostIn ? S.trimPitch : pitchDeg, y = lostIn ? 0 : yawRate;
+    if (mode === 'hover') c.hover(lostIn ? 0 : vx, lostIn ? 0 : vy, y, this.targetZ);
+    else if (mode === 'height') c.zDistance(r, p, y, this.targetZ);
+    else if (mode === 'althold') c.altHold(r, p, y, vz);
+    else if (mode === 'poshold') c.velocityWorld(lostIn ? 0 : vx, lostIn ? 0 : vy, vz, y);
+  }
+}
+
+// =====================================================================
+// UI helpers
+// =====================================================================
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+function h(tag, attrs = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k != null) e.append(k.nodeType ? k : String(k));
+  return e;
+}
+function toast(msg, kind = '') {
+  const box = $('#toast');
+  const d = h('div', { class: kind }, msg);
+  box.append(d);
+  while (box.children.length > 4) box.firstChild.remove();
+  setTimeout(() => d.remove(), kind === 'bad' ? 7000 : 4200);
+  appLog(msg);
+}
+function setChip(el, text, kind = '') { el.className = 'chip ' + kind; el.lastElementChild.textContent = text; }
+const fmt = (v, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : '–');
+const fmtAny = (v, d = 1) => (typeof v === 'number' ? v.toFixed(d) : v ?? '–');
+
+let colors = {};
+function readColors() {
+  const cs = getComputedStyle(document.documentElement);
+  for (const k of ['bg', 'panel', 'panel2', 'line', 'text', 'muted', 'accent', 'accent2', 'ok', 'warn', 'bad', 'sky1', 'sky2', 'gnd1', 'gnd2']) colors[k] = cs.getPropertyValue('--' + k).trim();
+}
+// Size a canvas for the device pixel ratio; returns [ctx, cssWidth, cssHeight].
+function prep(cv) {
+  if (!cv.dataset.h) { cv.dataset.h = cv.getAttribute('height'); cv.style.height = cv.dataset.h + 'px'; }
+  const dpr = Math.min(2, devicePixelRatio || 1), w = cv.clientWidth, hh = Number(cv.dataset.h);
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(hh * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(hh * dpr); }
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, hh);
+  return [ctx, w, hh];
+}
+const RAD = Math.PI / 180;
+const tiltColor = (a) => (Math.abs(a) < 15 ? colors.ok : Math.abs(a) < 35 ? colors.warn : colors.bad);
+
+// =====================================================================
+// Instruments
+// =====================================================================
+function drawHUD(cv, roll, pitch, yaw, sp) {
+  const [c, W, H] = prep(cv);
+  const cx = W / 2, cy = H / 2 - 10, ppd = H / 70;
+  c.save();
+  c.beginPath(); c.roundRect(0, 0, W, H, 10); c.clip();
+  c.translate(cx, cy); c.rotate(-roll * RAD); c.translate(0, pitch * ppd);
+  const big = Math.hypot(W, H) * 2;
+  let g = c.createLinearGradient(0, -H, 0, 0); g.addColorStop(0, colors.sky1); g.addColorStop(1, colors.sky2);
+  c.fillStyle = g; c.fillRect(-big, -big, big * 2, big);
+  g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, colors.gnd1); g.addColorStop(1, colors.gnd2);
+  c.fillStyle = g; c.fillRect(-big, 0, big * 2, big);
+  c.strokeStyle = '#fff'; c.lineWidth = 2;
+  c.beginPath(); c.moveTo(-big, 0); c.lineTo(big, 0); c.stroke();
+  c.font = '600 11px system-ui'; c.fillStyle = '#fff'; c.textBaseline = 'middle'; c.lineWidth = 1.5;
+  for (let p = -90; p <= 90; p += 5) {
+    if (!p) continue;
+    const y = -p * ppd, len = p % 10 === 0 ? W * 0.12 : W * 0.05;
+    if (Math.abs(y + pitch * ppd) > H) continue;
+    c.beginPath(); c.moveTo(-len, y); c.lineTo(len, y); c.stroke();
+    if (p % 10 === 0) { c.textAlign = 'right'; c.fillText(Math.abs(p), -len - 6, y); c.textAlign = 'left'; c.fillText(Math.abs(p), len + 6, y); }
+  }
+  c.restore();
+  // roll arc (sky pointer)
+  const R = Math.min(W * 0.42, H * 0.42);
+  c.save(); c.translate(cx, cy);
+  c.lineWidth = 2; c.strokeStyle = 'rgba(255,255,255,.85)';
+  c.beginPath(); c.arc(0, 0, R, (-90 - 60) * RAD, (-90 + 60) * RAD); c.stroke();
+  c.lineWidth = 5;
+  for (const [a0, a1, col] of [[30, 45, colors.warn], [45, 60, colors.bad], [-45, -30, colors.warn], [-60, -45, colors.bad]]) {
+    c.strokeStyle = col; c.beginPath(); c.arc(0, 0, R, (-90 + a0) * RAD, (-90 + a1) * RAD); c.stroke();
+  }
+  c.strokeStyle = '#fff'; c.lineWidth = 2;
+  for (const a of [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60]) {
+    const l = a % 30 === 0 ? 14 : 8, t = (-90 + a) * RAD;
+    c.beginPath(); c.moveTo(Math.cos(t) * R, Math.sin(t) * R); c.lineTo(Math.cos(t) * (R + l), Math.sin(t) * (R + l)); c.stroke();
+  }
+  const tri = (ang, fill, stroke) => {
+    c.save(); c.rotate(ang * RAD);
+    c.beginPath(); c.moveTo(0, -R + 2); c.lineTo(-8, -R + 16); c.lineTo(8, -R + 16); c.closePath();
+    if (fill) { c.fillStyle = fill; c.fill(); }
+    if (stroke) { c.strokeStyle = stroke; c.lineWidth = 2; c.stroke(); }
+    c.restore();
+  };
+  if (sp && Number.isFinite(sp.roll)) tri(clamp(sp.roll, -60, 60), null, colors.accent);
+  tri(clamp(roll, -60, 60), tiltColor(roll));
+  // aircraft symbol
+  c.strokeStyle = '#ffd400'; c.lineWidth = 4; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(-W * 0.18, 0); c.lineTo(-W * 0.06, 0); c.lineTo(-W * 0.03, 10); c.moveTo(W * 0.18, 0); c.lineTo(W * 0.06, 0); c.lineTo(W * 0.03, 10); c.stroke();
+  c.fillStyle = '#ffd400'; c.beginPath(); c.arc(0, 0, 4, 0, Math.PI * 2); c.fill();
+  if (sp && Number.isFinite(sp.pitch)) {
+    c.strokeStyle = colors.accent; c.lineWidth = 2; c.setLineDash([5, 4]);
+    const y = (-sp.pitch + pitch) * ppd;
+    c.beginPath(); c.moveTo(-W * 0.1, y); c.lineTo(W * 0.1, y); c.stroke(); c.setLineDash([]);
+  }
+  c.restore();
+  // heading tape
+  const th = 30, ty = H - th;
+  c.fillStyle = 'rgba(0,0,0,.45)'; c.fillRect(0, ty, W, th);
+  const hdg = (((-yaw) % 360) + 360) % 360, ppdH = 4;
+  c.strokeStyle = '#fff'; c.fillStyle = '#fff'; c.lineWidth = 1.5; c.textAlign = 'center'; c.font = '600 11px system-ui';
+  for (let d = Math.floor((hdg - W / 2 / ppdH) / 5) * 5; d <= hdg + W / 2 / ppdH; d += 5) {
+    const x = cx + (d - hdg) * ppdH, dd = ((d % 360) + 360) % 360;
+    c.beginPath(); c.moveTo(x, ty); c.lineTo(x, ty + (dd % 30 === 0 ? 10 : 5)); c.stroke();
+    if (dd % 30 === 0) c.fillText({ 0: 'N', 90: 'E', 180: 'S', 270: 'W' }[dd] ?? dd, x, ty + 20);
+  }
+  c.fillStyle = '#ffd400'; c.beginPath(); c.moveTo(cx, ty + 1); c.lineTo(cx - 6, ty - 7); c.lineTo(cx + 6, ty - 7); c.fill();
+  // readouts
+  c.font = '700 15px system-ui'; c.textBaseline = 'top';
+  const box = (x, txt, col, align) => {
+    c.textAlign = align; c.fillStyle = 'rgba(0,0,0,.5)';
+    const w = c.measureText(txt).width + 14;
+    c.fillRect(align === 'left' ? x : x - w, 8, w, 24);
+    c.fillStyle = col; c.fillText(txt, align === 'left' ? x + 7 : x - 7, 13);
+  };
+  box(8, `ROLL ${fmt(roll)}°`, tiltColor(roll), 'left');
+  box(W - 8, `PITCH ${fmt(pitch)}°`, tiltColor(pitch), 'right');
+}
+
+// Half-circle tilt gauge with a drone silhouette (rear view for roll, side view for pitch).
+function drawTiltGauge(cv, value, kind) {
+  const [c, W, H] = prep(cv);
+  const cx = W / 2, cy = H - 26, R = Math.min(W / 2 - 12, H - 40);
+  const v = Number.isFinite(value) ? value : 0;
+  // For pitch the needle is the drone's "up" direction: nose up tilts it backwards (left).
+  const disp = kind === 'pitch' ? -v : v;
+  c.lineWidth = 10; c.lineCap = 'butt';
+  const band = (a0, a1, col) => { c.strokeStyle = col; c.beginPath(); c.arc(cx, cy, R, (-90 + a0) * RAD, (-90 + a1) * RAD); c.stroke(); };
+  band(-90, -35, colors.bad); band(-35, -15, colors.warn); band(-15, 15, colors.ok); band(15, 35, colors.warn); band(35, 90, colors.bad);
+  c.strokeStyle = colors.panel; c.lineWidth = 2;
+  for (let a = -90; a <= 90; a += 15) {
+    const t = (-90 + a) * RAD;
+    c.beginPath(); c.moveTo(cx + Math.cos(t) * (R - 5), cy + Math.sin(t) * (R - 5)); c.lineTo(cx + Math.cos(t) * (R + 5), cy + Math.sin(t) * (R + 5)); c.stroke();
+  }
+  // silhouette
+  c.save(); c.translate(cx, cy - R * 0.32); c.rotate(disp * RAD);
+  c.fillStyle = colors.text; c.strokeStyle = colors.text; c.lineWidth = 3;
+  const s = R * 0.5;
+  if (kind === 'roll') {
+    c.fillRect(-s, -3, s * 2, 6); c.fillRect(-7, -8, 14, 12);
+    c.fillStyle = colors.accent; c.fillRect(-s - 10, -11, 20, 4); c.fillRect(s - 10, -11, 20, 4);
+    c.fillStyle = colors.text; c.fillRect(-s - 2, -8, 4, 6); c.fillRect(s - 2, -8, 4, 6);
+  } else {
+    c.fillRect(-s, -3, s * 2, 6); c.fillRect(-9, -8, 18, 12);
+    c.fillStyle = colors.bad; c.beginPath(); c.arc(s + 4, 0, 4, 0, Math.PI * 2); c.fill(); // red = nose
+    c.fillStyle = colors.accent; c.fillRect(-s - 10, -11, 20, 4); c.fillRect(s - 10, -11, 20, 4);
+  }
+  c.restore();
+  // needle
+  const t = (-90 + clamp(disp, -90, 90)) * RAD;
+  c.strokeStyle = tiltColor(v); c.lineWidth = 3; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(cx + Math.cos(t) * R * 0.62, cy + Math.sin(t) * R * 0.62); c.lineTo(cx + Math.cos(t) * (R + 8), cy + Math.sin(t) * (R + 8)); c.stroke();
+  c.fillStyle = tiltColor(v); c.font = '750 20px system-ui'; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  c.fillText(`${fmt(v)}°`, cx, cy + 18);
+  c.fillStyle = colors.muted; c.font = '11px system-ui';
+  const [l, r] = kind === 'roll' ? ['left', 'right'] : ['nose up', 'nose down'];
+  c.textAlign = 'left'; c.fillText(l, 4, cy + 18); c.textAlign = 'right'; c.fillText(r, W - 4, cy + 18);
+}
+
+function drawCompass(cv, yaw) {
+  const [c, W, H] = prep(cv);
+  const cx = W / 2, cy = H / 2 - 4, R = Math.min(W, H) / 2 - 14;
+  const hdg = (((-(yaw || 0)) % 360) + 360) % 360;
+  c.strokeStyle = colors.line; c.lineWidth = 6; c.beginPath(); c.arc(cx, cy, R, 0, Math.PI * 2); c.stroke();
+  c.fillStyle = colors.muted; c.font = '600 11px system-ui'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  for (let a = 0; a < 360; a += 30) {
+    const t = (a - 90) * RAD, lab = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' }[a];
+    c.strokeStyle = colors.muted; c.lineWidth = 1.5;
+    c.beginPath(); c.moveTo(cx + Math.cos(t) * (R - 3), cy + Math.sin(t) * (R - 3)); c.lineTo(cx + Math.cos(t) * (R + 3), cy + Math.sin(t) * (R + 3)); c.stroke();
+    if (lab) { c.fillStyle = lab === 'N' ? colors.bad : colors.muted; c.fillText(lab, cx + Math.cos(t) * (R - 14), cy + Math.sin(t) * (R - 14)); }
+  }
+  c.save(); c.translate(cx, cy); c.rotate(hdg * RAD);
+  c.fillStyle = colors.accent;
+  c.beginPath(); c.moveTo(0, -R * 0.62); c.lineTo(R * 0.22, R * 0.3); c.lineTo(0, R * 0.16); c.lineTo(-R * 0.22, R * 0.3); c.closePath(); c.fill();
+  c.restore();
+  c.fillStyle = colors.text; c.font = '750 18px system-ui'; c.fillText(`${fmt(hdg, 0)}°`, cx, H - 8);
+}
+
+function drawAltitude(cv, z, target, vz, laser, showTarget) {
+  const [c, W, H] = prep(cv);
+  const top = 12, bot = H - 28, x = 46, bw = 26;
+  const maxZ = Math.max(settings.maxHeight, (z || 0) + 0.3, showTarget ? target + 0.2 : 0);
+  const Y = (v) => bot - (clamp(v, 0, maxZ) / maxZ) * (bot - top);
+  c.fillStyle = colors.panel2; c.fillRect(x, top, bw, bot - top);
+  c.strokeStyle = colors.line; c.strokeRect(x + 0.5, top + 0.5, bw - 1, bot - top - 1);
+  c.fillStyle = colors.muted; c.font = '11px system-ui'; c.textAlign = 'right'; c.textBaseline = 'middle';
+  const step = maxZ > 2 ? 0.5 : 0.25;
+  for (let v = 0; v <= maxZ + 1e-6; v += step) { c.fillText(v.toFixed(2), x - 6, Y(v)); c.fillRect(x - 3, Y(v), 3, 1); }
+  if (Number.isFinite(z)) {
+    c.fillStyle = colors.accent; c.fillRect(x + 3, Y(z), bw - 6, bot - Y(z));
+  }
+  if (showTarget && Number.isFinite(target)) {
+    c.fillStyle = colors.warn; c.beginPath(); c.moveTo(x + bw + 2, Y(target)); c.lineTo(x + bw + 12, Y(target) - 6); c.lineTo(x + bw + 12, Y(target) + 6); c.fill();
+  }
+  c.textAlign = 'left'; c.fillStyle = colors.text; c.font = '750 20px system-ui';
+  c.fillText(`${fmt(z, 2)} m`, x + bw + 18, top + 14);
+  c.font = '12px system-ui'; c.fillStyle = colors.muted;
+  let y = top + 38;
+  if (showTarget) { c.fillText(`target ${fmt(target, 2)} m`, x + bw + 18, y); y += 18; }
+  c.fillText(`${Number.isFinite(vz) ? (vz >= 0 ? '▲ ' : '▼ ') + Math.abs(vz).toFixed(2) : '–'} m/s`, x + bw + 18, y); y += 18;
+  if (Number.isFinite(laser)) c.fillText(`laser ${laser < 8000 ? (laser / 1000).toFixed(2) + ' m' : 'out of range'}`, x + bw + 18, y);
+  c.textAlign = 'center'; c.fillText('height', x + bw / 2, H - 10);
+}
+
+function drawMotors(cv, m, thrust) {
+  const [c, W, H] = prep(cv);
+  // Thrust bar
+  const top = 12, bot = H - 28, bw = 18;
+  c.fillStyle = colors.panel2; c.fillRect(6, top, bw, bot - top);
+  const tp = clamp((thrust || 0) / 65535, 0, 1);
+  c.fillStyle = tp > 0.85 ? colors.bad : tp > 0.65 ? colors.warn : colors.ok;
+  c.fillRect(6, bot - tp * (bot - top), bw, tp * (bot - top));
+  c.fillStyle = colors.muted; c.font = '11px system-ui'; c.textAlign = 'center';
+  c.fillText(`${Math.round(tp * 100)}%`, 6 + bw / 2, H - 10);
+  // Quad, top view. Front is up. M1 front-right, M2 back-right, M3 back-left, M4 front-left.
+  const cx = (W + 30) / 2, cy = (H - 16) / 2, d = Math.min(W - 60, H - 40) * 0.36;
+  c.strokeStyle = colors.muted; c.lineWidth = 5; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(cx - d, cy - d); c.lineTo(cx + d, cy + d); c.moveTo(cx + d, cy - d); c.lineTo(cx - d, cy + d); c.stroke();
+  c.fillStyle = colors.text; c.beginPath(); c.roundRect(cx - 10, cy - 14, 20, 28, 4); c.fill();
+  c.fillStyle = colors.bad; c.beginPath(); c.moveTo(cx, cy - d - 14); c.lineTo(cx - 6, cy - d - 4); c.lineTo(cx + 6, cy - d - 4); c.fill();
+  const pos = [[1, -1], [1, 1], [-1, 1], [-1, -1]];
+  pos.forEach(([sx, sy], i) => {
+    const v = clamp((m?.[i] || 0) / 65535, 0, 1), x = cx + sx * d, y = cy + sy * d, r = Math.max(14, d * 0.42);
+    c.fillStyle = colors.panel2; c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = v > 0.85 ? colors.bad : v > 0.6 ? colors.warn : colors.accent; c.lineWidth = 5;
+    c.beginPath(); c.arc(x, y, r - 3, -Math.PI / 2, -Math.PI / 2 + v * Math.PI * 2); c.stroke();
+    c.fillStyle = colors.text; c.font = '600 11px system-ui'; c.textBaseline = 'middle';
+    c.fillText(`M${i + 1}`, x, y - 6); c.fillStyle = colors.muted; c.fillText(`${Math.round(v * 100)}%`, x, y + 7);
+  });
+  c.textBaseline = 'alphabetic'; c.fillStyle = colors.muted; c.fillText('front', cx, 10);
+}
+
+function drawSticks(cv, inp) {
+  const [c, W, H] = prep(cv);
+  const a = inp.axes || [], b = inp.buttons || [];
+  const R = Math.min(W / 4 - 12, H / 2 - 22);
+  const pad = (x, ax, ay, label) => {
+    const y = H / 2 - 6;
+    c.strokeStyle = colors.line; c.lineWidth = 2; c.beginPath(); c.arc(x, y, R, 0, Math.PI * 2); c.stroke();
+    c.beginPath(); c.moveTo(x - R, y); c.lineTo(x + R, y); c.moveTo(x, y - R); c.lineTo(x, y + R); c.strokeStyle = colors.panel2; c.stroke();
+    const dz = settings.deadzone * R;
+    c.strokeStyle = colors.line; c.setLineDash([3, 3]); c.beginPath(); c.arc(x, y, dz, 0, Math.PI * 2); c.stroke(); c.setLineDash([]);
+    c.fillStyle = inp.source === 'none' ? colors.muted : colors.accent;
+    c.beginPath(); c.arc(x + clamp(ax || 0, -1, 1) * R, y + clamp(ay || 0, -1, 1) * R, 8, 0, Math.PI * 2); c.fill();
+    c.fillStyle = colors.muted; c.font = '11px system-ui'; c.textAlign = 'center'; c.fillText(label, x, H - 4);
+  };
+  let lx = a[0], ly = a[1], rx = a[2], ry = a[3];
+  if (inp.keyboard) { lx = inp.yaw; ly = -(inp.throttle * 2 - 1); rx = inp.roll; ry = -inp.pitch; }
+  pad(W * 0.25, lx, ly, 'left stick');
+  pad(W * 0.75, rx, ry, 'right stick');
+  const trig = (x, v, lab) => {
+    c.fillStyle = colors.panel2; c.fillRect(x - 5, 8, 10, H - 40);
+    c.fillStyle = colors.warn; const hh = (H - 40) * clamp(v || 0, 0, 1); c.fillRect(x - 5, 8 + (H - 40) - hh, 10, hh);
+    c.fillStyle = colors.muted; c.font = '10px system-ui'; c.textAlign = 'center'; c.fillText(lab, x, H - 18);
+  };
+  trig(8, b[6], 'L2'); trig(W - 8, b[7], 'R2');
+}
+
+// =====================================================================
+// Plotter: ring buffers + canvas, auto-scaled
+// =====================================================================
+const PALETTE = ['#2fb8ff', '#ff6b6b', '#2fd27a', '#ffb020', '#b18cff', '#ff8fd1', '#4fe3d4', '#d9e36b'];
+class Plot {
+  constructor(cv) { this.cv = cv; this.series = new Map(); this.win = 10; this.paused = false; this.N = 8000; }
+  add(name) {
+    if (this.series.has(name)) return;
+    this.series.set(name, { name, color: PALETTE[this.series.size % PALETTE.length], t: new Float64Array(this.N), v: new Float32Array(this.N), i: 0, n: 0 });
+  }
+  remove(name) { this.series.delete(name); }
+  clear() { this.series.clear(); }
+  push(name, v, t) {
+    const s = this.series.get(name);
+    if (!s || this.paused || !Number.isFinite(v)) return;
+    s.t[s.i] = t; s.v[s.i] = v; s.i = (s.i + 1) % this.N; s.n = Math.min(this.N, s.n + 1);
+  }
+  draw(now) {
+    const [c, W, H] = prep(this.cv);
+    const L = 54, T = 30, Rr = 10, B = 24, pw = W - L - Rr, ph = H - T - B;
+    if (!this.paused) this.tEnd = now;
+    const t1 = this.tEnd || now, t0 = t1 - this.win * 1000;
+    let lo = Infinity, hi = -Infinity;
+    for (const s of this.series.values()) for (let k = 0; k < s.n; k++) {
+      const j = (s.i - 1 - k + this.N) % this.N;
+      if (s.t[j] < t0) break;
+      if (s.v[j] < lo) lo = s.v[j];
+      if (s.v[j] > hi) hi = s.v[j];
+    }
+    if (!Number.isFinite(lo)) { lo = -1; hi = 1; }
+    if (hi - lo < 1e-6) { hi += 0.5; lo -= 0.5; }
+    const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+    const X = (t) => L + ((t - t0) / (t1 - t0)) * pw, Y = (v) => T + (1 - (v - lo) / (hi - lo)) * ph;
+    c.strokeStyle = colors.line; c.lineWidth = 1; c.fillStyle = colors.muted; c.font = '11px system-ui';
+    c.textAlign = 'right'; c.textBaseline = 'middle';
+    for (let k = 0; k <= 5; k++) {
+      const v = lo + ((hi - lo) * k) / 5, y = Y(v);
+      c.beginPath(); c.moveTo(L, y); c.lineTo(W - Rr, y); c.stroke();
+      c.fillText(Math.abs(v) >= 1000 ? v.toExponential(1) : v.toFixed(Math.abs(hi - lo) < 2 ? 3 : 1), L - 6, y);
+    }
+    c.textAlign = 'center'; c.textBaseline = 'top';
+    for (let s = 0; s <= this.win; s += this.win <= 10 ? 1 : this.win <= 30 ? 5 : 10) {
+      const x = X(t1 - s * 1000); c.fillText(s ? `-${s}s` : 'now', x, H - B + 6);
+    }
+    c.lineWidth = 1.6;
+    for (const s of this.series.values()) {
+      c.strokeStyle = s.color; c.beginPath();
+      let first = true;
+      for (let k = s.n - 1; k >= 0; k--) {
+        const j = (s.i - 1 - k + this.N) % this.N;
+        if (s.t[j] < t0) continue;
+        const x = X(s.t[j]), y = Y(s.v[j]);
+        if (first) { c.moveTo(x, y); first = false; } else c.lineTo(x, y);
+      }
+      c.stroke();
+    }
+    // legend
+    c.textAlign = 'left'; c.textBaseline = 'middle'; c.font = '12px system-ui';
+    let lx = L;
+    for (const s of this.series.values()) {
+      const last = s.n ? s.v[(s.i - 1 + this.N) % this.N] : NaN, txt = `${s.name} ${fmt(last, 3)}`;
+      c.fillStyle = s.color; c.fillRect(lx, 10, 12, 4); c.fillStyle = colors.text; c.fillText(txt, lx + 16, 12);
+      lx += c.measureText(txt).width + 34;
+      if (lx > W - 120) break;
+    }
+    if (!this.series.size) { c.fillStyle = colors.muted; c.textAlign = 'center'; c.fillText('Pick a preset or add a variable above.', W / 2, H / 2); }
+  }
+  csv() {
+    const names = [...this.series.keys()];
+    const rows = ['time_s,' + names.join(',')];
+    const all = [];
+    for (const [ni, s] of [...this.series.values()].entries()) for (let k = s.n - 1; k >= 0; k--) { const j = (s.i - 1 - k + this.N) % this.N; all.push([s.t[j], ni, s.v[j]]); }
+    all.sort((a, b) => a[0] - b[0]);
+    for (const [t, ni, v] of all) { const r = new Array(names.length).fill(''); r[ni] = v; rows.push(`${(t / 1000).toFixed(3)},${r.join(',')}`); }
+    return rows.join('\n');
+  }
+}
+function download(name, text) {
+  const a = h('a', { href: URL.createObjectURL(new Blob([text], { type: 'text/csv' })), download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+// =====================================================================
+// App
+// =====================================================================
+const cf = new Crazyflie();
+const input = new Input();
+const flight = new Flight(cf, input);
+const plot = new Plot($('#plot'));
+const consoleLines = [];
+let consoleDirty = false;
+let telemetry = [];
+let activeTab = 'fly';
+let flightClock = 0;
+
+function appLog(msg) { consoleLines.push(`[app] ${msg}`); consoleDirty = true; }
+cf.on('console', (line) => { consoleLines.push(line); consoleDirty = true; });
+
+function onLogData(vals, vars) {
+  const now = performance.now();
+  for (const v of vars) {
+    const x = vals[v.full];
+    tele.v[v.full] = x; tele.t[v.full] = now;
+    plot.push(v.full, x, now);
+  }
+  if (vals['supervisor.info'] !== undefined && vars.some((v) => v.full === 'supervisor.info')) flight.sup = Crazyflie.decodeSup(vals['supervisor.info']);
+}
+
+async function startTelemetry() {
+  const ble = cf.link?.kind === 'ble';
+  const att = Math.max(settings.attPeriod, ble ? 50 : 20);
+  const sets = [
+    ['attitude', ['stabilizer.roll', 'stabilizer.pitch', 'stabilizer.yaw', 'stabilizer.thrust', 'stateEstimate.z'], att],
+    ['status', ['pm.vbat', 'pm.batteryLevel', 'pm.state', 'supervisor.info', 'range.zrange', 'radio.rssi', 'sys.canfly', 'sys.isFlying', 'sys.isTumbled'], settings.statPeriod],
+    ['motors', ['motor.m1', 'motor.m2', 'motor.m3', 'motor.m4', 'stateEstimate.vz'], ble ? 150 : 100],
+    ['position', ['stateEstimate.x', 'stateEstimate.y', 'stateEstimate.vx', 'stateEstimate.vy', 'baro.asl'], ble ? 300 : 150],
+  ];
+  telemetry = [];
+  for (const [label, names, period] of sets) {
+    try { const cfg = await cf.log.start(label, names, period, onLogData); if (cfg) telemetry.push(cfg); }
+    catch (e) { appLog(`telemetry "${label}": ${e.message}`); }
+  }
+  // Older firmware without supervisor.info: derive the essentials from sys.*
+  if (!cf.log.has('supervisor.info')) {
+    const iv = setInterval(() => {
+      if (!cf.connected) return clearInterval(iv);
+      flight.sup = { canFly: !!tele.get('sys.canfly'), isFlying: !!tele.get('sys.isFlying'), isTumbled: !!tele.get('sys.isTumbled'), isAutoArmed: true, isArmed: true };
+    }, 500);
+  }
+}
+
+async function loadAfterConnect() {
+  const bar = $('#loadBar');
+  try {
+    await cf.loadTocs((label, f) => { bar.style.width = `${Math.round(f * 100)}%`; $('#hudInfo').textContent = f < 1 ? `${label} ${Math.round(f * 100)}%` : ''; });
+    const decks = cf.param.toc.items.filter((p) => p.group === 'deck').map((p) => p.full);
+    const extra = ['ring.effect', 'ring.headlightEnable', 'commander.enHighLevel', 'stabilizer.estimator', 'stabilizer.controller'].filter((n) => cf.param.has(n));
+    await cf.param.readMany([...decks, ...extra], 4);
+    renderDecks(); renderModes(); renderLed();
+    if (settings.mode !== 'manual' && !flight.available(settings.mode).ok) {
+      toast(`${MODES[settings.mode].name} ${flight.available(settings.mode).why}. Switched to Manual.`, 'warn');
+      flight.setMode('manual', true);
+    }
+    bar.style.width = '0';
+    $('#hudInfo').textContent = '';
+    if (settings.readAllParams) await cf.param.readMany(cf.param.toc.items.map((p) => p.full), 3);
+  } catch (e) {
+    if (cf.connected) toast(`Could not load all tables: ${e.message}`, 'warn');
+    bar.style.width = '0';
+  }
+}
+
+cf.on('log-ready', () => { startTelemetry(); renderLogToc(); });
+cf.on('param-ready', () => renderParams());
+cf.on('lost', (why) => { toast(`Connection lost: ${why}`, 'bad'); afterDisconnect(); });
+cf.on('disconnected', () => afterDisconnect());
+cf.param.on('update', (name, v) => paramUpdated(name, v));
+
+function afterDisconnect() {
+  flight.onDisconnected();
+  telemetry = [];
+  for (const k of Object.keys(tele.v)) delete tele.v[k];
+  $('#btnConnect').textContent = 'Connect';
+  $('#btnConnect').classList.add('primary');
+  $('#loadBar').style.width = '0';
+  $('#hudInfo').textContent = '';
+  renderBlocks();
+}
+
+let connecting = false;
+async function connect() {
+  if (connecting) return;
+  if (cf.link) { await flightSafeDisconnect(); return; }
+  connecting = true;
+  const btn = $('#btnConnect');
+  btn.disabled = true;
+  try {
+    let link;
+    if (settings.link === 'ble') {
+      if (!BleLink.available()) throw new Error('Web Bluetooth is not available in this browser. Use Chrome or Edge (and see Help).');
+      setChip($('#chipLink'), 'Choose your Crazyflie…', 'warn');
+      const dev = await BleLink.request();
+      setChip($('#chipLink'), `Connecting to ${dev.name || 'Crazyflie'}…`, 'warn');
+      link = new BleLink(dev, Number(settings.bleRate));
+    } else if (settings.link === 'radio') {
+      if (!Crazyradio.available()) throw new Error('WebUSB is not available in this browser. Use Chrome or Edge.');
+      setChip($('#chipLink'), 'Choose your Crazyradio…', 'warn');
+      const radio = await Crazyradio.get();
+      setChip($('#chipLink'), 'Connecting…', 'warn');
+      link = new RadioLink(radio, { channel: settings.radioChannel, datarate: settings.radioRate, address: settings.radioAddress });
+    } else {
+      link = new SimLink();
+    }
+    await startLink(link);
+  } catch (e) {
+    if (e?.name === 'NotFoundError') toast(settings.link === 'ble' ? 'No Crazyflie chosen. Is it on and nearby? If it was used with a Crazyradio, restart it.' : 'No device chosen.', 'warn');
+    else if (e?.name === 'SecurityError') toast(`The browser blocked access: ${e.message}. See Help → Troubleshooting.`, 'bad');
+    else toast(e?.message || String(e), 'bad');
+    setChip($('#chipLink'), 'Not connected', '');
+  } finally {
+    btn.disabled = false;
+    connecting = false;
+  }
+}
+
+async function startLink(link) {
+  const btn = $('#btnConnect');
+  await cf.connect(link);
+  flight.onConnected();
+  btn.textContent = 'Disconnect';
+  btn.classList.remove('primary');
+  const what = [cf.deviceType || 'Crazyflie', cf.firmware && `firmware ${cf.firmware}`].filter(Boolean).join(' · ');
+  toast(`Connected: ${what}. You can fly now; telemetry is loading.`, 'ok');
+  $('#aboutInfo').textContent = `${what} · CRTP protocol ${cf.protocolVersion} · ${link.name}`;
+  if (cf.protocolVersion >= 0 && cf.protocolVersion < 12) appLog(`Old firmware (protocol ${cf.protocolVersion}): using legacy arming/e-stop.`);
+  loadAfterConnect();
+}
+
+async function flightSafeDisconnect() {
+  if (flight.inFlight && !confirm('The Crazyflie is flying. Disconnecting stops control and it will fall after 2 s. Disconnect anyway?')) return;
+  if (flight.state !== 'idle' && flight.state !== 'estop') { cf.commander.stop(); await sleep(60); }
+  await cf.disconnect();
+}
+
+async function scanRadio() {
+  if (cf.link) { toast('Disconnect first.', 'warn'); return; }
+  try {
+    const radio = await Crazyradio.get();
+    await radio.open();
+    toast('Scanning all channels…');
+    const found = await radio.scan(settings.radioAddress, (f) => { $('#loadBar').style.width = `${f * 100}%`; });
+    await radio.close();
+    $('#loadBar').style.width = '0';
+    if (!found.length) { toast('No Crazyflie found. Is it on? Is the address right (Settings)?', 'warn'); return; }
+    const pick = found.find((f) => f.datarate === '2M') || found[0];
+    settings.radioChannel = pick.channel; settings.radioRate = pick.datarate; saveSettings(); syncSettingsUI();
+    toast(`Found ${found.map((f) => `${f.channel}/${f.datarate}`).join(', ')}. Using ${pick.channel}/${pick.datarate}.`, 'ok');
+  } catch (e) { if (e?.name !== 'NotFoundError') toast(e.message, 'bad'); $('#loadBar').style.width = '0'; }
+}
+
+// ---------------- Fly tab ----------------
+function renderModes() {
+  const box = $('#modes');
+  box.replaceChildren(...Object.entries(MODES).map(([id, m]) => {
+    const av = flight.available(id);
+    return h('button', { class: `mode ${settings.mode === id ? 'on' : ''} ${av.ok ? '' : 'na'}`, title: av.ok ? m.help : `Not available: ${av.why}`, onclick: () => { flight.setMode(id); } },
+      h('b', {}, m.name), h('span', {}, av.ok ? m.sub : av.why));
+  }));
+  $('#modeHelp').textContent = MODES[settings.mode].help;
+}
+flight.on('mode', () => renderModes());
+flight.on('trim', () => updateTrim());
+function updateTrim() { $('#trimOut').textContent = `${settings.trimRoll.toFixed(2)}° / ${settings.trimPitch.toFixed(2)}°`; }
+
+const DECK_NAMES = {
+  bcFlow: 'Flow v1', bcFlow2: 'Flow v2', bcZRanger: 'Z-ranger', bcZRanger2: 'Z-ranger v2', bcLighthouse4: 'Lighthouse', bcLoco: 'Loco', bcDWM1000: 'Loco',
+  bcMultiranger: 'Multi-ranger', bcLedRing: 'LED ring', bcAI: 'AI deck', bcUSD: 'Micro SD', bcBuzzer: 'Buzzer', bcActiveMarker: 'Active marker', bcColorLedBot: 'Color LED (bottom)', bcColorLedTop: 'Color LED (top)', bcGTGPS: 'GPS', bcBrushless: 'Brushless',
+};
+function renderDecks() {
+  const box = $('#deckChips');
+  const found = cf.param.toc ? cf.param.toc.items.filter((p) => p.group === 'deck' && cf.param.get(p.full)) : [];
+  box.replaceChildren(...(found.length ? found.map((p) => h('span', { class: 'chip ok' }, h('span', { class: 'dot' }), DECK_NAMES[p.name] || p.name)) : [h('span', { class: 'muted small' }, cf.param.toc ? 'No decks' : '–')]));
+}
+const LED_EFFECTS = ['Off', 'White spinner', 'Colour spinner', 'Tilt', 'Brightness', 'Spinner 2', 'Double spinner', 'Solid colour', 'LED test', 'Battery charge', 'Boat lights', 'Siren', 'Gravity light', 'Virtual memory', 'Fade colour', 'Signal strength', 'Location status', 'Timer', 'Lighthouse'];
+function renderLed() {
+  const has = !!cf.param.get('deck.bcLedRing') && cf.param.has('ring.effect');
+  $('#ledCard').classList.toggle('hidden', !has);
+  if (!has) return;
+  const sel = $('#ledEffect');
+  sel.replaceChildren(...LED_EFFECTS.map((n, i) => h('option', { value: i }, `${i} · ${n}`)));
+  sel.value = cf.param.get('ring.effect') ?? 0;
+  $('#ledHead').closest('label').classList.toggle('hidden', !cf.param.has('ring.headlightEnable'));
+  $('#ledHead').checked = !!cf.param.get('ring.headlightEnable');
+}
+$('#ledEffect').addEventListener('change', (e) => cf.param.set('ring.effect', e.target.value).catch((err) => toast(err.message, 'bad')));
+$('#ledHead').addEventListener('change', (e) => cf.param.set('ring.headlightEnable', e.target.checked ? 1 : 0).catch((err) => toast(err.message, 'bad')));
+
+const STATE_TEXT = { idle: 'DISCONNECTED', disarmed: 'DISARMED', armed: 'ARMED', takeoff: 'TAKING OFF', flying: 'FLYING', landing: 'LANDING', failsafe: 'FAILSAFE', estop: 'EMERGENCY STOP' };
+const STATE_COLOR = { idle: 'muted', disarmed: 'text', armed: 'warn', takeoff: 'accent', flying: 'ok', landing: 'accent', failsafe: 'bad', estop: 'bad' };
+
+function updateFlyText() {
+  const st = flight.state, assisted = ASSISTED.has(settings.mode);
+  const fs = $('#fState');
+  fs.textContent = STATE_TEXT[st];
+  fs.style.color = colors[STATE_COLOR[st]];
+  let hint = flight.hint || '';
+  if (st === 'idle') hint = 'Connect to a Crazyflie to start.';
+  else if (st === 'disarmed') hint = input.pad() ? 'Press △ Triangle (or ARM) when ready.' : 'Plug in a controller and press a button, or use the keyboard.';
+  else if (st === 'estop') hint = 'Motors are off. Restart the Crazyflie and reconnect to fly again.';
+  else if (st === 'armed' && settings.mode === 'manual' && !flight.thrustLock) hint = 'Push the throttle up gently to take off.';
+  $('#fHint').textContent = hint;
+  const arm = $('#btnArm');
+  arm.disabled = !cf.connected || st === 'estop';
+  arm.firstChild.textContent = st === 'disarmed' || st === 'idle' || st === 'estop' ? 'ARM ' : 'DISARM ';
+  arm.classList.toggle('arm-on', !['disarmed', 'idle', 'estop'].includes(st));
+  const to = $('#btnTakeoff');
+  to.disabled = !cf.connected || !assisted || !['armed', 'takeoff', 'flying'].includes(st);
+  to.firstChild.textContent = st === 'takeoff' || st === 'flying' ? 'LAND ' : 'TAKE OFF ';
+  to.title = assisted ? '' : 'In Manual, use the throttle to take off and land';
+
+  // banner
+  const bn = $('#banner');
+  let msg = '', kind = 'warn';
+  if (flight.sup?.isTumbled) { msg = 'The Crazyflie is upside down (tumbled). Motors are blocked until it is turned over.'; }
+  else if (flight.sup?.isLocked) { msg = 'The Crazyflie is locked (emergency stop or crash). Switch it off and on to fly again.'; kind = 'bad'; }
+  else if (tele.get('pm.state') === 3) { msg = 'Battery low: land now and charge.'; }
+  else if (tele.get('pm.state') === 1) { msg = 'Charging. Unplug USB power before flying.'; kind = 'ok'; }
+  else if (cf.connected && flight.sup && !flight.sup.canFly && !flight.inFlight && st !== 'estop') { msg = 'The Crazyflie reports it cannot fly yet (sensors still calibrating? Keep it still and level).'; }
+  else if (!cf.connected && settings.link === 'ble' && !navigator.bluetooth) { msg = 'This browser has no Web Bluetooth. Use Chrome or Edge, or try the Simulator. See Help.'; }
+  bn.textContent = msg; bn.className = `banner ${kind} ${msg ? '' : 'hidden'}`;
+
+  // readout
+  const o = cf.commander.last, live = cf.connected && !['idle', 'disarmed', 'estop'].includes(st);
+  $('#oType').textContent = live && o ? o.type : 'not sending';
+  $('#oRoll').textContent = live && o ? `${fmtAny(o.roll)}${typeof o.roll === 'number' ? '°' : ''}` : '–';
+  $('#oPitch').textContent = live && o ? `${fmtAny(o.pitch)}${typeof o.pitch === 'number' ? '°' : ''}` : '–';
+  $('#oYaw').textContent = live && o ? `${fmtAny(o.yaw, 0)}°/s` : '–';
+  $('#oThrustL').textContent = o?.tl || 'Thrust';
+  $('#oThrust').textContent = live && o ? o.thrust : '–';
+  $('#oHex').textContent = live && o ? hex(o.bytes) : '–';
+  const L = cf.link;
+  $('#rateInfo').textContent = L ? `↑ ${L.stats.up}/s  ↓ ${L.stats.down}/s` : '';
+
+  // battery
+  const pct = tele.get('pm.batteryLevel'), vb = tele.get('pm.vbat'), ps = tele.get('pm.state');
+  $('#batPct').textContent = Number.isFinite(pct) ? `${pct}%` : '–';
+  $('#batV').textContent = `${fmt(vb, 2)} V`;
+  $('#batBar').style.width = `${Number.isFinite(pct) ? pct : 0}%`;
+  $('#batBar').style.background = pct < 15 || ps === 3 ? colors.bad : pct < 35 ? colors.warn : colors.ok;
+  $('#batState').textContent = ['On battery', 'Charging', 'Charged', 'LOW', 'Shutting down'][ps] || '';
+  const secs = Math.floor(flight.flightMs / 1000);
+  $('#flightTime').textContent = `flight time ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+
+  // supervisor chips
+  const sup = flight.sup;
+  if (sup) {
+    const chip = (on, label, good = true) => h('span', { class: `chip ${on ? (good ? 'ok' : 'bad') : ''}` }, h('span', { class: 'dot' }), label);
+    $('#supChips').replaceChildren(
+      chip(sup.canFly, sup.canFly ? 'Ready to fly' : 'Not ready'), chip(sup.isArmed, sup.isAutoArmed ? 'Auto-armed' : sup.isArmed ? 'Armed' : 'Not armed'),
+      chip(sup.isFlying, sup.isFlying ? 'In the air' : 'On ground'), ...(sup.isTumbled ? [chip(true, 'Tumbled', false)] : []),
+      ...(sup.isCrashed ? [chip(true, 'Crashed', false)] : []), ...(sup.isLocked ? [chip(true, 'Locked', false)] : []),
+    );
+  }
+  // sensors
+  const rows = [
+    ['Laser height', tele.get('range.zrange'), (v) => (v < 8000 ? `${(v / 1000).toFixed(3)} m` : 'out of range')],
+    ['Barometer', tele.get('baro.asl'), (v) => `${v.toFixed(2)} m ASL`],
+    ['Vertical speed', tele.get('stateEstimate.vz'), (v) => `${v.toFixed(2)} m/s`],
+    ['Position x / y', tele.get('stateEstimate.x'), (v) => `${v.toFixed(2)} / ${fmt(tele.get('stateEstimate.y'), 2)} m`],
+    ['Radio RSSI', cf.link?.kind === 'radio' ? tele.get('radio.rssi') : undefined, (v) => `-${v} dBm`],
+    ['Link', cf.link ? cf.link.stats.quality : undefined, (v) => `${v}% · ${cf.link.name}`],
+  ].filter((r) => Number.isFinite(r[1]));
+  $('#sensTable').replaceChildren(...rows.map(([k, v, f]) => h('tr', {}, h('td', {}, k), h('td', {}, f(v)))));
+}
+
+function updateHeader() {
+  const L = cf.link;
+  if (L && cf.connected) {
+    const q = L.stats.quality;
+    setChip($('#chipLink'), `${L.kind === 'ble' ? 'Bluetooth' : L.kind === 'radio' ? 'Radio' : 'Simulator'} · ${q}%`, q > 70 ? 'ok' : q > 30 ? 'warn' : 'bad');
+  } else if (!connecting) setChip($('#chipLink'), 'Not connected', '');
+  const pct = tele.get('pm.batteryLevel');
+  if (Number.isFinite(pct)) setChip($('#chipBat'), `Battery ${pct}% · ${fmt(tele.get('pm.vbat'), 2)} V`, pct < 15 || tele.get('pm.state') === 3 ? 'bad' : pct < 35 ? 'warn' : 'ok');
+  else setChip($('#chipBat'), 'Battery –', '');
+  const p = input.pad();
+  if (p) setChip($('#chipPad'), /dualsense|054c-0ce6|054c-0df2/i.test(p.id) ? 'PS5 controller' : 'Gamepad', p.mapping === 'standard' ? 'ok' : 'warn');
+  else setChip($('#chipPad'), settings.keyboard ? 'Keyboard (no gamepad)' : 'No controller', settings.keyboard ? 'warn' : 'bad');
+}
+
+$('#btnArm').addEventListener('click', () => flight.action('arm', 'ui'));
+$('#btnTakeoff').addEventListener('click', () => flight.action('takeoff', 'ui'));
+$('#btnEstop').addEventListener('click', () => flight.estop());
+$('#btnConnect').addEventListener('click', connect);
+$('#btnScan').addEventListener('click', scanRadio);
+$$('#linkSel button').forEach((b) => b.addEventListener('click', () => {
+  if (cf.link) { toast('Disconnect first to change the connection type.', 'warn'); return; }
+  settings.link = b.dataset.link; saveSettings(); syncLinkSel();
+}));
+function syncLinkSel() {
+  $$('#linkSel button').forEach((b) => b.classList.toggle('on', b.dataset.link === settings.link));
+  $('#btnScan').classList.toggle('hidden', settings.link !== 'radio');
+}
+input.on('pad', (p) => { toast(`Controller connected: ${p.id.split('(')[0].trim()}`, 'ok'); input.rumble(0.3, 120); });
+input.on('pad-lost', () => toast('Controller disconnected!', flight.inFlight ? 'bad' : 'warn'));
+
+// ---------------- Plot tab ----------------
+const PLOT_PRESETS = {
+  Attitude: ['stabilizer.roll', 'stabilizer.pitch', 'stabilizer.yaw'],
+  Gyro: ['gyro.x', 'gyro.y', 'gyro.z'],
+  Accel: ['acc.x', 'acc.y', 'acc.z'],
+  Motors: ['motor.m1', 'motor.m2', 'motor.m3', 'motor.m4'],
+  Height: ['stateEstimate.z', 'range.zrange'],
+  Position: ['stateEstimate.x', 'stateEstimate.y', 'stateEstimate.z'],
+  Velocity: ['stateEstimate.vx', 'stateEstimate.vy', 'stateEstimate.vz'],
+  Battery: ['pm.vbat'],
+};
+let plotCfg = null;
+async function plotVars(names) {
+  if (!cf.log.toc) { toast('Connect first: variables load after connecting.', 'warn'); return; }
+  const ok = names.filter((n) => cf.log.has(n));
+  const missing = names.filter((n) => !cf.log.has(n));
+  if (missing.length) toast(`Not in this firmware: ${missing.join(', ')}`, 'warn');
+  if (!ok.length) return;
+  for (const n of ok) plot.add(n);
+  // stream only what isn't already streaming
+  const streaming = new Set(telemetry.flatMap((c) => c.vars.map((v) => v.full)));
+  const need = [...plot.series.keys()].filter((n) => !streaming.has(n) && cf.log.has(n));
+  if (plotCfg) { await cf.log.stop(plotCfg); plotCfg = null; }
+  if (need.length) {
+    try { plotCfg = await cf.log.start('plot', need, cf.link?.kind === 'ble' ? 100 : 30, onLogData); } catch (e) { toast(e.message, 'bad'); }
+  }
+}
+$('#plotPresets').replaceChildren(...Object.keys(PLOT_PRESETS).map((k) => h('button', { onclick: () => { plot.clear(); plotVars(PLOT_PRESETS[k]); } }, k)));
+$('#plotAdd').addEventListener('click', () => { const v = $('#plotVar').value.trim(); if (v) { plotVars([v]); $('#plotVar').value = ''; } });
+$('#plotVar').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#plotAdd').click(); });
+$('#plotWin').addEventListener('change', (e) => { plot.win = Number(e.target.value); });
+$('#plotPause').addEventListener('click', (e) => { plot.paused = !plot.paused; e.target.textContent = plot.paused ? 'Resume' : 'Pause'; });
+$('#plotClear').addEventListener('click', async () => { plot.clear(); if (plotCfg) { await cf.log.stop(plotCfg); plotCfg = null; } });
+$('#plotCsv').addEventListener('click', () => download(`crazyflie-plot-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`, plot.csv()));
+
+// ---------------- Log data tab ----------------
+const logSel = new Set();
+const blocks = [];
+function renderLogToc() {
+  const toc = cf.log.toc;
+  if (!toc) return;
+  $('#logCount').textContent = `${toc.count} variables`;
+  $('#logVarList').replaceChildren(...toc.items.map((it) => h('option', { value: it.full })));
+  const groups = new Map();
+  for (const it of toc.items) { if (!groups.has(it.group)) groups.set(it.group, []); groups.get(it.group).push(it); }
+  const box = $('#logToc');
+  box.replaceChildren(...[...groups.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([g, items]) => {
+    const d = h('details', { class: 'group', 'data-g': g }, h('summary', {}, g, h('span', { class: 'count' }, `${items.length}`)));
+    d.addEventListener('toggle', () => {
+      if (!d.open || d.dataset.built) return;
+      d.dataset.built = 1;
+      d.append(h('table', { class: 'ptable' }, items.map((it) => h('tr', { 'data-n': it.full },
+        h('td', { style: 'width:28px' }, h('input', { type: 'checkbox', checked: logSel.has(it.full), onchange: (e) => { if (e.target.checked) logSel.add(it.full); else logSel.delete(it.full); updateSel(); } })),
+        h('td', { class: 'name' }, it.name), h('td', { class: 'type' }, LOG_TYPES[it.type]?.name || '?'),
+        h('td', {}, h('button', { class: 'btn small', onclick: () => { activateTab('plot'); plotVars([it.full]); } }, 'Plot'))))));
+    });
+    return d;
+  }));
+  filterLog();
+}
+function updateSel() {
+  let bytes = 0;
+  for (const n of logSel) bytes += LOG_TYPES[cf.log.toc?.byName.get(n)?.type]?.size || 0;
+  $('#blkSel').textContent = `${logSel.size} selected · ${bytes} bytes${bytes > 26 ? ` (uses ${Math.ceil(bytes / 26)} blocks or more)` : ''}`;
+}
+function filterLog() {
+  const q = $('#logSearch').value.trim().toLowerCase();
+  for (const d of $$('#logToc details')) {
+    const g = d.dataset.g.toLowerCase();
+    const hit = !q || g.includes(q) || cf.log.toc.items.some((it) => it.group === d.dataset.g && it.full.toLowerCase().includes(q));
+    d.classList.toggle('hidden', !hit);
+    if (q && hit && !g.includes(q)) { d.open = true; }
+    if (d.open && d.dataset.built) for (const tr of $$('tr', d)) tr.classList.toggle('hidden', !!q && !tr.dataset.n.toLowerCase().includes(q) && !g.includes(q));
+  }
+}
+$('#logSearch').addEventListener('input', () => { filterLog(); setTimeout(filterLog, 0); });
+$('#blkStart').addEventListener('click', async () => {
+  if (!cf.connected || !cf.log.toc) { toast('Connect first.', 'warn'); return; }
+  if (!logSel.size) { toast('Tick some variables first.', 'warn'); return; }
+  const name = $('#blkName').value.trim() || 'custom', period = clamp(Number($('#blkPeriod').value) || 100, 10, 2550);
+  const b = { name, period, rec: null, cfg: null };
+  try {
+    b.cfg = await cf.log.start(name, [...logSel], period, (vals, vars, ts) => {
+      onLogData(vals, vars);
+      if (b.rec) b.rec.push(`${ts},${b.cfg.vars.map((v) => vals[v.full] ?? '').join(',')}`);
+    });
+    blocks.push(b);
+    renderBlocks();
+  } catch (e) { toast(e.message, 'bad'); }
+});
+function renderBlocks() {
+  const box = $('#blkList');
+  const live = blocks.filter((b) => b.cfg && cf.log.configs.has(b.cfg));
+  blocks.length = 0; blocks.push(...live);
+  if (!live.length) { box.replaceChildren(h('p', { class: 'muted small' }, 'None yet.')); return; }
+  box.replaceChildren(...live.map((b) => h('div', { class: 'card', style: 'padding:8px' },
+    h('h3', {}, `${b.name} · ${b.period} ms`, h('span', { class: 'grow' }),
+      h('button', { class: 'btn small', onclick: () => { activateTab('plot'); for (const v of b.cfg.vars) plot.add(v.full); } }, 'Plot'),
+      h('button', { class: 'btn small', onclick: (e) => {
+        if (b.rec) { download(`${b.name}-${Date.now()}.csv`, b.rec.join('\n')); b.rec = null; e.target.textContent = 'Record CSV'; }
+        else { b.rec = [`timestamp_ms,${b.cfg.vars.map((v) => v.full).join(',')}`]; e.target.textContent = '■ Stop & save'; }
+      } }, 'Record CSV'),
+      h('button', { class: 'btn small', onclick: async () => { await cf.log.stop(b.cfg); renderBlocks(); } }, 'Stop')),
+    h('table', { class: 'readout small' }, b.cfg.vars.map((v) => h('tr', {}, h('td', {}, v.full), h('td', { 'data-live': v.full }, '–')))))));
+}
+
+// ---------------- Params tab ----------------
+function renderParams() {
+  const toc = cf.param.toc;
+  if (!toc) return;
+  $('#parCount').textContent = `${toc.count} parameters`;
+  const groups = new Map();
+  for (const it of toc.items) { if (!groups.has(it.group)) groups.set(it.group, []); groups.get(it.group).push(it); }
+  $('#parList').replaceChildren(...[...groups.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([g, items]) => {
+    const d = h('details', { class: 'group', 'data-g': g }, h('summary', {}, g, h('span', { class: 'count' }, `${items.length}`)));
+    d.addEventListener('toggle', async () => {
+      if (!d.open || d.dataset.built) return;
+      d.dataset.built = 1;
+      d.append(h('table', { class: 'ptable' }, items.map(paramRow)));
+      filterParams();
+      const unread = items.filter((it) => !cf.param.values.has(it.full)).map((it) => it.full);
+      if (unread.length && cf.connected) await cf.param.readMany(unread, 4);
+    });
+    return d;
+  }));
+  filterParams();
+}
+function paramRow(it) {
+  const inp = h('input', { type: 'text', value: fmtParam(it, cf.param.get(it.full)), disabled: it.readonly, 'data-p': it.full });
+  const apply = async () => {
+    try {
+      const v = await cf.param.set(it.full, inp.value);
+      inp.value = fmtParam(it, v);
+      inp.closest('tr').classList.add('changed');
+      toast(`${it.full} = ${inp.value}`, 'ok');
+    } catch (e) { toast(e.message, 'bad'); inp.value = fmtParam(it, cf.param.get(it.full)); }
+  };
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') apply(); if (e.key === 'Escape') inp.value = fmtParam(it, cf.param.get(it.full)); });
+  return h('tr', { 'data-n': it.full },
+    h('td', { class: 'name' }, it.name),
+    h('td', { class: 'type' }, `${it.tname}${it.readonly ? ' · read-only' : ''}`),
+    h('td', {}, inp),
+    h('td', { style: 'white-space:nowrap;text-align:right' },
+      it.readonly ? '' : h('button', { class: 'btn small', onclick: apply }, 'Set'), ' ',
+      it.readonly ? '' : h('button', { class: 'btn small', title: 'Save to the Crazyflie (persistent parameters only)', onclick: async () => {
+        try { const ok = await cf.param.persist(it.full); toast(ok ? `${it.full} saved to EEPROM` : `${it.full} is not a persistent parameter`, ok ? 'ok' : 'warn'); } catch (e) { toast(e.message, 'bad'); }
+      } }, '💾')));
+}
+function fmtParam(it, v) { return v === undefined ? '' : it.isFloat ? String(+v.toPrecision(7)) : String(v); }
+function paramUpdated(name, v) {
+  const inp = document.querySelector(`input[data-p="${CSS.escape(name)}"]`);
+  if (inp && document.activeElement !== inp) inp.value = fmtParam(cf.param.toc.byName.get(name), v);
+  if (name.startsWith('deck.')) { renderDecks(); renderModes(); }
+  if (name.startsWith('ring.')) renderLed();
+}
+function filterParams() {
+  const q = $('#parSearch').value.trim().toLowerCase();
+  for (const d of $$('#parList details')) {
+    const g = d.dataset.g;
+    const hit = !q || g.toLowerCase().includes(q) || cf.param.toc.items.some((it) => it.group === g && it.full.toLowerCase().includes(q));
+    d.classList.toggle('hidden', !hit);
+    if (q && hit && !d.open && cf.param.toc.items.some((it) => it.group === g && it.name.toLowerCase().includes(q))) d.open = true;
+    for (const tr of $$('tr', d)) tr.classList.toggle('hidden', !!q && !g.toLowerCase().includes(q) && !tr.dataset.n.toLowerCase().includes(q));
+  }
+}
+$('#parSearch').addEventListener('input', filterParams);
+$('#parReload').addEventListener('click', async () => {
+  if (!cf.connected || !cf.param.toc) { toast('Connect first.', 'warn'); return; }
+  const names = $$('#parList details[open]').flatMap((d) => cf.param.toc.items.filter((it) => it.group === d.dataset.g).map((it) => it.full));
+  if (!names.length) { toast('Open a group first: only open groups are re-read.', 'warn'); return; }
+  await cf.param.readMany(names, 4);
+  for (const n of names) paramUpdated(n, cf.param.get(n));
+  toast(`Re-read ${names.length} values`, 'ok');
+});
+
+// ---------------- Console tab ----------------
+function flushConsole() {
+  if (!consoleDirty) return;
+  consoleDirty = false;
+  if (consoleLines.length > 3000) consoleLines.splice(0, consoleLines.length - 3000);
+  const pre = $('#console');
+  const showApp = $('#conApp').checked;
+  pre.textContent = (showApp ? consoleLines : consoleLines.filter((l) => !l.startsWith('[app]'))).join('\n');
+  if ($('#conScroll').checked) pre.scrollTop = pre.scrollHeight;
+}
+$('#conApp').addEventListener('change', () => { consoleDirty = true; });
+$('#conClear').addEventListener('click', () => { consoleLines.length = 0; consoleDirty = true; });
+$('#conCopy').addEventListener('click', () => navigator.clipboard?.writeText($('#console').textContent).then(() => toast('Copied', 'ok')));
+
+// ---------------- Controller tab ----------------
+function renderMap() {
+  $('#mapGrid').replaceChildren(...Object.entries(ACTIONS).flatMap(([act, label]) => [
+    h('span', {}, label),
+    h('b', {}, input.capture === act ? 'press a button…' : BTN_NAMES[settings.map[act]] ?? `Button ${settings.map[act]}`),
+    h('button', { class: 'btn small', onclick: () => { input.capture = act; renderMap(); } }, 'Change'),
+  ]));
+}
+input.on('capture-done', () => renderMap());
+$('#mapReset').addEventListener('click', () => { settings.map = { ...DEFAULT_MAP }; saveSettings(); renderMap(); });
+$('#rumbleTest').addEventListener('click', () => { const was = settings.rumble; settings.rumble = true; input.rumble(0.8, 400); settings.rumble = was; });
+const padBtnEls = BTN_NAMES.map((n) => h('div', { class: 'pbtn' }, n));
+$('#padBtns').replaceChildren(...padBtnEls);
+const axisEls = ['Left X', 'Left Y', 'Right X', 'Right Y'].map((n) => {
+  const bar = h('i'), val = h('span', { class: 'mono' }, '0.00');
+  return { row: h('div', { class: 'axis' }, h('span', {}, n), h('div', { class: 'bar' }, bar), val), bar, val };
+});
+$('#padAxes').replaceChildren(...axisEls.map((a) => a.row));
+function updatePadTab() {
+  const p = input.pad(), inp = flight.inp;
+  $('#padInfo').textContent = p
+    ? `${p.id} · mapping: ${p.mapping || 'non-standard'}${p.mapping !== 'standard' ? ' (buttons may differ, remap below)' : ''}`
+    : 'Plug in your PS5 controller with a USB cable and press any button.';
+  (inp.axes || []).slice(0, 4).forEach((v, i) => {
+    const a = axisEls[i]; if (!a) return;
+    a.val.textContent = (v || 0).toFixed(2);
+    a.bar.style.left = `${50 + Math.min(0, v) * 50}%`; a.bar.style.width = `${Math.abs(v) * 50}%`;
+  });
+  padBtnEls.forEach((e, i) => e.classList.toggle('on', (inp.buttons?.[i] || 0) > 0.5));
+}
+
+// ---------------- Settings ----------------
+function syncSettingsUI() {
+  for (const el of $$('[data-set]')) {
+    const k = el.dataset.set, v = settings[k];
+    if (el.type === 'checkbox') el.checked = !!v; else el.value = v;
+  }
+  for (const o of $$('[data-out]')) {
+    const k = o.dataset.out, v = settings[k];
+    const unit = { maxAngle: '°', maxYaw: '°/s', minThrust: '%', maxThrust: '%', slewLimit: '%', slewRate: '%/s', takeoffHeight: ' m', maxHeight: ' m', maxVel: ' m/s', maxVz: ' m/s', landVel: ' m/s', attPeriod: ' ms', statPeriod: ' ms' }[k] || '';
+    o.textContent = `${v}${unit}`;
+  }
+  $$('#presetSel button').forEach((b) => b.classList.toggle('on', b.dataset.preset === settings.preset));
+  document.documentElement.dataset.theme = settings.theme;
+  readColors();
+  updateTrim();
+}
+for (const el of $$('[data-set]')) {
+  el.addEventListener(el.tagName === 'SELECT' || el.type === 'checkbox' || el.type === 'text' ? 'change' : 'input', () => {
+    const k = el.dataset.set;
+    let v = el.type === 'checkbox' ? el.checked : el.value;
+    if (el.type === 'range' || el.type === 'number' || ['stickMode', 'bleRate'].includes(k)) v = Number(v);
+    if (k === 'radioAddress') { try { parseAddress(v); } catch (e) { toast(e.message, 'bad'); el.value = settings[k]; return; } v = v.toUpperCase(); }
+    settings[k] = v;
+    if (Object.keys(PRESETS.normal).includes(k)) settings.preset = 'custom';
+    if (k === 'minThrust' && settings.minThrust > settings.maxThrust) settings.maxThrust = settings.minThrust;
+    saveSettings();
+    syncSettingsUI();
+  });
+}
+$$('#presetSel button').forEach((b) => b.addEventListener('click', () => { Object.assign(settings, PRESETS[b.dataset.preset]); settings.preset = b.dataset.preset; saveSettings(); syncSettingsUI(); }));
+$('#clearCache').addEventListener('click', () => {
+  for (const k of Object.keys(localStorage)) if (k.startsWith('cfdeck.toc.')) localStorage.removeItem(k);
+  toast('Cache cleared. The next connect downloads the tables again.', 'ok');
+});
+$('#resetAll').addEventListener('click', () => {
+  if (!confirm('Reset every setting, including button mapping and trim?')) return;
+  const map = { ...DEFAULT_MAP };
+  for (const k of Object.keys(settings)) delete settings[k];
+  Object.assign(settings, structuredClone(DEFAULTS), { map });
+  saveSettings(); syncSettingsUI(); syncLinkSel(); renderMap(); renderModes();
+});
+
+// ---------------- Tabs ----------------
+function activateTab(id) {
+  activeTab = id;
+  $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === id));
+  $$('.tab').forEach((t) => t.classList.toggle('on', t.id === `tab-${id}`));
+  if (id === 'console') consoleDirty = true;
+  if (id === 'logs') renderBlocks();
+}
+$$('#tabs button').forEach((b) => b.addEventListener('click', () => activateTab(b.dataset.tab)));
+
+// ---------------- Render loops ----------------
+const sm = { roll: 0, pitch: 0, yaw: 0 };
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (activeTab === 'fly') {
+    const r = tele.get('stabilizer.roll') ?? 0, p = tele.get('stabilizer.pitch') ?? 0, y = tele.get('stabilizer.yaw') ?? 0;
+    const a = settings.smooth ? 0.35 : 1;
+    sm.roll += (r - sm.roll) * a; sm.pitch += (p - sm.pitch) * a;
+    let dy = y - sm.yaw; if (dy > 180) dy -= 360; if (dy < -180) dy += 360; sm.yaw += dy * a;
+    const o = cf.commander.last, live = !['idle', 'disarmed', 'estop'].includes(flight.state);
+    const sp = live && o && typeof o.roll === 'number' ? { roll: o.roll, pitch: o.pitch } : null;
+    drawHUD($('#hud'), sm.roll, sm.pitch, sm.yaw, sp);
+    drawTiltGauge($('#gRoll'), sm.roll, 'roll');
+    drawTiltGauge($('#gPitch'), sm.pitch, 'pitch');
+    drawCompass($('#gYaw'), sm.yaw);
+    const zr = tele.get('range.zrange');
+    drawAltitude($('#gAlt'), tele.get('stateEstimate.z'), flight.targetZ, tele.get('stateEstimate.vz'), cf.param.get('deck.bcFlow2') || cf.param.get('deck.bcZRanger2') || cf.param.get('deck.bcFlow') ? zr : undefined, Z_MODES.has(settings.mode) && flight.inFlight);
+    drawMotors($('#gMotors'), [tele.get('motor.m1'), tele.get('motor.m2'), tele.get('motor.m3'), tele.get('motor.m4')], tele.get('stabilizer.thrust'));
+    drawSticks($('#gSticks'), flight.inp);
+  } else if (activeTab === 'plot') plot.draw(now);
+}
+setInterval(() => {
+  updateHeader();
+  if (activeTab === 'fly') updateFlyText();
+  if (activeTab === 'pad') updatePadTab();
+  if (activeTab === 'console') flushConsole();
+  if (activeTab === 'logs') for (const td of $$('#blkList [data-live]')) { const v = tele.get(td.dataset.live); td.textContent = typeof v === 'number' ? +v.toFixed(4) : '–'; }
+}, 100);
+flight.on('state', () => updateFlyText());
+
+// ---------------- Boot ----------------
+window.addEventListener('beforeunload', (e) => { if (flight.inFlight) { e.preventDefault(); e.returnValue = ''; } });
+document.addEventListener('visibilitychange', () => { if (document.hidden && flight.inFlight) appLog('Tab hidden while flying: failsafe engaged.'); });
+new ResizeObserver(() => { /* canvases resize on next frame */ }).observe(document.body);
+syncSettingsUI();
+syncLinkSel();
+renderModes();
+renderMap();
+updateFlyText();
+updateHeader();
+requestAnimationFrame(frame);
+appLog(`Ready. Heartbeat: ${ticker.kind === 'worker' ? 'background-safe worker' : 'page timer (keep this tab visible while flying)'}. ${location.protocol === 'file:' ? 'Opened from a file.' : ''}`);
+if (!navigator.bluetooth && !navigator.usb) toast('This browser supports neither Web Bluetooth nor WebUSB. Use Chrome or Edge, or try the Simulator.', 'warn');
+else if (navigator.bluetooth?.getAvailability) navigator.bluetooth.getAvailability().then((ok) => { if (!ok && settings.link === 'ble') toast('Bluetooth looks switched off on this computer.', 'warn'); }).catch(() => {});
+// Exposed for the browser console (debugging): window.cfdeck.cf.param.set('...', v)
+window.cfdeck = { cf, flight, input, settings, tele, plot, startLink, BleLink, SimLink };
+</script>
+</body>
+</html>

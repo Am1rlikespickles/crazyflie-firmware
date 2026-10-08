@@ -2,6 +2,10 @@
 
 This repository contains the source code for the [Bitcraze Crazyflie 2.0](https://www.bitcraze.io/crazyflie-2/)/[2.1](https://www.bitcraze.io/products/crazyflie-2-1/firmware) utilizing [ARM Mbed OS](https://www.mbed.com/en/platform/mbed-os/).
 
+## Fly it from your browser
+
+[`gui/index.html`](gui/index.html) is a single-file ground station: fly the Crazyflie 2.1/2.1+ over Bluetooth with a PS5 controller, with live attitude gauges, plotter, log and parameter editors. See [gui/README.md](gui/README.md). It talks to the official Bitcraze firmware.
+
 ## Programming
 
 Below are step by step instructions to program the [Bitcraze Crazyflie 2.0](https://www.bitcraze.io/crazyflie-2/)/[2.1](https://www.bitcraze.io/products/crazyflie-2-1/firmware).
