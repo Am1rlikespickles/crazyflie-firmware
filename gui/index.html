@@ -223,6 +223,7 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
   <button data-tab="console">⌨ Console</button>
   <button data-tab="pad">🎮 Controller</button>
   <button data-tab="settings">🛠 Settings</button>
+  <button data-tab="check">🩺 Pre-flight</button>
   <button data-tab="help">❓ Help</button>
 </nav>
 <main>
@@ -472,6 +473,80 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
       <label class="row"><span>Theme</span><select data-set="theme"><option value="dark">Dark</option><option value="light">Light</option></select></label>
       <label class="row"><span>Smooth animations</span><input type="checkbox" data-set="smooth"></label>
       <div class="btn-row"><button class="btn" id="resetAll">Reset all settings</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PRE-FLIGHT CHECK ================= -->
+<section class="tab" id="tab-check">
+  <div class="banner" id="flipBanner">
+    <b>Flips over right at take-off?</b> When a Crazyflie tips over at low height in <i>every</i> mode, the cause is almost always
+    a propeller or motor: wrong propeller type on a motor, a propeller upside down or cracked, a motor plugged into the wrong socket,
+    or a worn motor. Work through the checks below. The flight recorder also explains the last flip.
+  </div>
+  <div class="fly-grid">
+    <div class="stack">
+      <div class="card">
+        <h3>Last flip <span class="grow"></span><button class="btn small" id="flipCsv" disabled>Export recording</button><button class="btn small" id="flipCopy" disabled>Copy report</button></h3>
+        <div id="flipReport" class="muted">No flip recorded yet. The recorder keeps the last 30 s of every flight and analyses any tip-over automatically.</div>
+        <canvas id="flipChart" height="220" class="hidden" style="margin-top:10px"></canvas>
+      </div>
+      <div class="card">
+        <h3>1 · Propellers and motors (look from above, antenna at the front)</h3>
+        <div class="two" style="align-items:center">
+          <svg viewBox="0 0 240 240" id="motorSvg" role="img" aria-label="Motor layout: M4 front left clockwise, M1 front right counter-clockwise, M3 back left counter-clockwise, M2 back right clockwise">
+            <style>
+              #motorSvg text { fill: var(--text); font: 600 13px system-ui; text-anchor: middle; }
+              #motorSvg .arm { stroke: var(--muted); stroke-width: 9; stroke-linecap: round; }
+              #motorSvg .prop { fill: var(--panel2); stroke: var(--accent); stroke-width: 3; }
+              #motorSvg .suspect .prop { stroke: var(--bad); stroke-width: 6; fill: color-mix(in srgb, var(--bad) 18%, var(--panel2)); }
+              #motorSvg .spin .prop { stroke: var(--warn); stroke-width: 6; }
+              #motorSvg .dir { font: 700 26px system-ui; fill: var(--accent); }
+              #motorSvg .small { font: 10px system-ui; fill: var(--muted); }
+            </style>
+            <line class="arm" x1="55" y1="55" x2="185" y2="185"/><line class="arm" x1="185" y1="55" x2="55" y2="185"/>
+            <rect x="100" y="95" width="40" height="50" rx="6" fill="var(--text)"/>
+            <polygon points="120,22 112,36 128,36" fill="var(--bad)"/><text x="120" y="16" class="small">front (antenna)</text>
+            <g id="svgM4"><circle class="prop" cx="55" cy="55" r="42"/><text x="55" y="48" class="dir">↻</text><text x="55" y="70">M4</text><text x="55" y="85" class="small">clockwise</text></g>
+            <g id="svgM1"><circle class="prop" cx="185" cy="55" r="42"/><text x="185" y="48" class="dir">↺</text><text x="185" y="70">M1</text><text x="185" y="85" class="small">counter-cw</text></g>
+            <g id="svgM3"><circle class="prop" cx="55" cy="185" r="42"/><text x="55" y="178" class="dir">↺</text><text x="55" y="200">M3</text><text x="55" y="215" class="small">counter-cw</text></g>
+            <g id="svgM2"><circle class="prop" cx="185" cy="185" r="42"/><text x="185" y="178" class="dir">↻</text><text x="185" y="200">M2</text><text x="185" y="215" class="small">clockwise</text></g>
+          </svg>
+          <ul class="small" style="margin:0;padding-left:18px">
+            <li><b>M1 and M3</b> (front-right, back-left) need <b>counter-clockwise</b> propellers; <b>M2 and M4</b> need <b>clockwise</b> ones. Check the marking on each propeller against the leaflet that came with your Crazyflie.</li>
+            <li>The raised, leading edge of each blade must face the way it spins. A propeller that is upside down or the wrong type <b>pushes the drone down</b> on that corner.</li>
+            <li>Push every propeller fully onto its shaft. Replace any that are chipped, bent or cracked.</li>
+            <li>Each motor cable goes in its own socket (M1 cable in M1). After a crash, check that every motor still sits fully down in its mount.</li>
+            <li>Remove hair or fluff wound round the motor shafts.</li>
+            <li>The battery sits centred under the board, and no wire touches a propeller.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="card">
+        <h3>2 · Motor spin test</h3>
+        <p class="small muted" style="margin-top:0">Spins one motor slowly for 1.5 s. Check that the <b>right corner</b> spins, in the <b>direction on the diagram</b>.
+          Works while disarmed. Keep fingers clear; Space stops it.</p>
+        <label class="row"><span>Propellers are clear and the Crazyflie is on a flat surface</span><input type="checkbox" id="spinOk"></label>
+        <div class="btn-row">
+          <button class="btn" data-spin="0">Spin M1</button><button class="btn" data-spin="1">Spin M2</button>
+          <button class="btn" data-spin="2">Spin M3</button><button class="btn" data-spin="3">Spin M4</button>
+        </div>
+        <div class="small muted" id="spinStatus"></div>
+      </div>
+      <div class="card">
+        <h3>3 · Propeller vibration test (firmware)</h3>
+        <p class="small muted" style="margin-top:0">The Crazyflie spins each motor and measures the vibration. A damaged or unbalanced propeller, or a worn motor, shakes far more than the others.</p>
+        <div class="btn-row"><button class="btn" id="propTest">Run propeller test</button></div>
+        <canvas id="propChart" height="150" class="hidden"></canvas>
+        <div id="propResult" class="small"></div>
+      </div>
+      <div class="card">
+        <h3>4 · At rest on the floor</h3>
+        <table class="readout" id="restTable"><tr><td class="muted">Connect to check sensors.</td><td></td></tr></table>
+        <p class="small muted">Sitting still and flat, roll and pitch should both be within ±3°. If not, the Crazyflie will try to "correct" a tilt that isn't there.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -981,6 +1056,9 @@ class SimLink extends Link {
       L('acc', 'x', 7), L('acc', 'y', 7), L('acc', 'z', 7), L('gyro', 'x', 7), L('gyro', 'y', 7), L('gyro', 'z', 7),
       L('baro', 'asl', 7), L('baro', 'temp', 7), L('baro', 'pressure', 7),
       L('sys', 'canfly', 1), L('sys', 'isFlying', 1), L('sys', 'isTumbled', 1),
+      L('health', 'motorVarXM1', 7), L('health', 'motorVarYM1', 7), L('health', 'motorVarXM2', 7), L('health', 'motorVarYM2', 7),
+      L('health', 'motorVarXM3', 7), L('health', 'motorVarYM3', 7), L('health', 'motorVarXM4', 7), L('health', 'motorVarYM4', 7),
+      L('health', 'motorPass', 1), L('health', 'batterySag', 7),
     ];
     const P = (g, n, t, v) => ({ group: g, name: n, type: t, value: v });
     const RO = 0x40;
@@ -993,11 +1071,20 @@ class SimLink extends Link {
       P('pid_rate', 'roll_kp', 0x06, 250), P('pid_rate', 'pitch_kp', 0x06, 250), P('pid_rate', 'yaw_kp', 0x06, 120),
       P('ring', 'effect', 0x08, 6), P('ring', 'headlightEnable', 0x08, 0), P('supervisor', 'tmblChckEn', 0x08, 1),
       P('cpu', 'flash', 0x09 | RO, 1024), P('sim', 'windGust', 0x06, 0.05),
+      P('health', 'startPropTest', 0x08, 0), P('health', 'propTestThreshold', 0x06, 0),
+      P('motorPowerSet', 'enable', 0x08, 0), P('motorPowerSet', 'm1', 0x09, 0), P('motorPowerSet', 'm2', 0x09, 0),
+      P('motorPowerSet', 'm3', 0x09, 0), P('motorPowerSet', 'm4', 0x09, 0),
+      // Fault injection for practice/testing: 1-4 = that motor/propeller gives too little thrust
+      P('sim', 'badMotor', 0x08, 0),
     ];
     this.blocks = new Map();
     this.s = { roll: 0, pitch: 0, yaw: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, thrust: 0, bat: 4.15, t0: performance.now() };
     this.sp = { kind: 'none', t: 0 };
     this.locked = false;
+    this.crashed = false;
+    this.flipRate = 0;
+    this.tiltT = 0;
+    this.health = { pass: 0x80, var: [0, 0, 0, 0], sag: 0, t0: 0 };
     this.thrustLocked = true;
     this.hl = null;
   }
@@ -1073,6 +1160,7 @@ class SimLink extends Link {
           if (!(p.type & 0x40)) p.value = PARAM_TYPES[p.type & 0x0f].get(new DataView(d.buffer, d.byteOffset + 2), 0);
           this._reply(2, 2, [d[0], d[1], ...this._pval(p)]);
           if (p.name === 'stop' && p.value) this._estop();
+          if (p.name === 'startPropTest' && p.value) { p.value = 0; this._propTest(); }
         }
         if (ch === 3 && d[0] === 3) this._reply(2, 3, [3, d[1], d[2], 0]);
         break;
@@ -1106,6 +1194,11 @@ class SimLink extends Link {
         if (ch === 0 && d[0] === 0x0c) { const v = this._info(); this._reply(9, 0, [0x8c, v & 0xff, v >> 8]); }
         if (ch === 1 && d[0] === 0x01) this._reply(9, 1, [0x81, 1, 1]);
         if (ch === 1 && d[0] === 0x03) this._estop();
+        if (ch === 1 && d[0] === 0x02) { // crash recovery
+          const ok = this.crashed && !this._tumbled();
+          if (ok) { this.crashed = false; this._print('SUPERVISOR: Crash recovery\n'); }
+          this._reply(9, 1, [0x82, ok ? 1 : 0, this.crashed ? 0 : 1]);
+        }
         break;
       case 6: if (ch === 1 && d[0] === 3) this._estop(); break; // legacy e-stop
     }
@@ -1118,9 +1211,26 @@ class SimLink extends Link {
     this._print('SUPERVISOR: Emergency stop! Motors locked. Restart the Crazyflie to fly again.\n');
   }
 
+  _tumbled() { return Math.abs(this.s.roll) > 60 || Math.abs(this.s.pitch) > 60; }
+  _pv(name) { return this.params.find((p) => `${p.group}.${p.name}` === name)?.value || 0; }
   _info() {
-    const s = this.s, flying = s.z > 0.02 && s.thrust > 0.05;
-    return (0 << 0) | (1 << 1) | (1 << 2) | ((this.locked ? 0 : 1) << 3) | ((flying ? 1 : 0) << 4) | ((this.locked ? 1 : 0) << 6);
+    const s = this.s, flying = s.z > 0.02 && s.thrust > 0.05, ok = !this.locked && !this.crashed && !this._tumbled();
+    return (1 << 1) | (1 << 2) | ((ok ? 1 : 0) << 3) | ((flying ? 1 : 0) << 4) | ((this._tumbled() ? 1 : 0) << 5)
+      | ((this.locked ? 1 : 0) << 6) | ((this.crashed ? 1 : 0) << 7);
+  }
+  // Mimics health.c: spins each motor, measures vibration (acc variance X+Y).
+  _propTest() {
+    const h = this.health, bad = this._pv('sim.badMotor');
+    h.pass = 0; h.t0 = performance.now();
+    this._print('HEALTH: Propeller test starting\n');
+    [0, 1, 2, 3].forEach((m) => setTimeout(() => {
+      h.var[m] = (bad === m + 1 ? 14 : 2) + Math.random() * 0.8;
+      this._print(`HEALTH: Motor M${m + 1} variance X+Y: ${h.var[m].toFixed(2)} (Z:1.10), voltage sag:0.08\n`);
+    }, 600 + m * 700));
+    setTimeout(() => {
+      h.var.forEach((v, m) => this._print(`HEALTH: Propeller test on M${m + 1}. No threshold set. measured: ${v.toFixed(2)}\n`));
+      h.sag = 0.12; h.pass = 0x80;
+    }, 3400);
   }
 
   _step() {
@@ -1129,7 +1239,7 @@ class SimLink extends Link {
     const age = now - sp.t;
     let dRoll = 0, dPitch = 0, yawRate = 0, thrust = 0, vzT = null, vT = null;
     const zTo = (zt) => clamp((zt - s.z) * 2.2, -1, 1);
-    if (this.locked) thrust = 0;
+    if (this.locked || this.crashed) thrust = 0;
     else if (this.hl && sp.kind === 'none') {
       const h = this.hl, k = clamp((now - h.t0) / Math.max(1, h.dur), 0, 1), e = k * k * (3 - 2 * k);
       if (h.x1 !== undefined) vT = { wx: clamp((h.x0 + (h.x1 - h.x0) * e - s.x) * 2, -1, 1), wy: clamp((h.y0 + (h.y1 - h.y0) * e - s.y) * 2, -1, 1) };
@@ -1162,10 +1272,24 @@ class SimLink extends Link {
       thrust = clamp((az + g) / (2.2 * g), 0, 1);
       if (s.z <= 0 && vzT <= 0) thrust = 0;
     }
-    const gust = (this.params.find((p) => p.name === 'windGust')?.value || 0) * (Math.sin(now / 900) + Math.sin(now / 370));
-    const k = Math.min(1, dt * 12);
+    const gust = this._pv('sim.windGust') * (Math.sin(now / 900) + Math.sin(now / 370));
+    let k = Math.min(1, dt * 12);
+    const bad = this._pv('sim.badMotor');
+    if (bad >= 1 && bad <= 4 && thrust > 0.15 && !this.crashed) {
+      // that corner can't lift: the controller saturates and the drone rolls over it
+      const [sr, sp2] = [[1, -1], [1, 1], [-1, 1], [-1, -1]][bad - 1];
+      this.flipRate += 700 * dt;
+      s.roll += sr * this.flipRate * dt; s.pitch += sp2 * this.flipRate * dt;
+      k = 0;
+    } else this.flipRate = 0;
     s.roll += (dRoll - s.roll) * k + gust;
     s.pitch += (dPitch - s.pitch) * k;
+    if (this._tumbled() && (s.thrust > 0.05 || s.z > 0.02)) {
+      if ((this.tiltT += 10) > 200 && !this.crashed) { this.crashed = true; this._print('SUPERVISOR: Crashed (tumbled while flying). Motors stopped.\n'); }
+    } else if (!this._tumbled()) this.tiltT = 0;
+    if (this.crashed && s.z <= 0 && this._tumbled() && (this.restT = (this.restT || 0) + 10) > 2500) {
+      s.roll = 0; s.pitch = 0; this.restT = 0; // someone picked it up and put it back on its feet
+    }
     s.yaw += yawRate * dt;
     if (s.yaw > 180) s.yaw -= 360;
     if (s.yaw < -180) s.yaw += 360;
@@ -1179,7 +1303,7 @@ class SimLink extends Link {
       s.vx += (ax - s.vx * 0.6) * dt; s.vy += (ay - s.vy * 0.6) * dt; s.vz += (az - s.vz * 0.4) * dt;
     }
     s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
-    if (s.z <= 0) { s.z = 0; s.vz = Math.max(0, s.vz); s.vx *= 0.8; s.vy *= 0.8; if (thrust < 0.3) { s.roll *= 0.8; s.pitch *= 0.8; } }
+    if (s.z <= 0) { s.z = 0; s.vz = Math.max(0, s.vz); s.vx *= 0.8; s.vy *= 0.8; if (thrust < 0.3 && !this._tumbled()) { s.roll *= 0.8; s.pitch *= 0.8; } }
     s.bat = Math.max(3.0, s.bat - dt * (0.00035 + thrust * 0.0011));
     this.acc = { x: axB / g + (Math.random() - 0.5) * 0.02, y: ayB / g + (Math.random() - 0.5) * 0.02, z: (az + g) / g + (Math.random() - 0.5) * 0.02 };
     this.gyro = { x: (dRoll - s.roll) * k * 100, y: (dPitch - s.pitch) * k * 100, z: yawRate };
@@ -1195,7 +1319,12 @@ class SimLink extends Link {
 
   _value(v) {
     const s = this.s, name = `${v.group}.${v.name}`, sag = s.thrust * 0.35;
-    const m = (sign1, sign2) => (this.locked ? 0 : clamp(s.thrust * 65535 + sign1 * s.roll * 300 + sign2 * s.pitch * 300, 0, 65535));
+    // A controller raises the motors on the side that is low. FR, BR, BL, FL:
+    const m = (sr, sp2, i) => {
+      if (this._pv('motorPowerSet.enable') === 1) return this._pv(`motorPowerSet.m${i}`);
+      if (this.locked || this.crashed || s.thrust <= 0) return 0;
+      return clamp(s.thrust * 65535 + sr * s.roll * 900 - sp2 * s.pitch * 900, 0, 65535);
+    };
     switch (name) {
       case 'stabilizer.roll': return s.roll;
       case 'stabilizer.pitch': return s.pitch;
@@ -1213,10 +1342,10 @@ class SimLink extends Link {
       case 'radio.rssi': return 40;
       case 'supervisor.info': return this._info();
       case 'range.zrange': return Math.round(s.z * 1000 + 8);
-      case 'motor.m1': return m(-1, 1);
-      case 'motor.m2': return m(-1, -1);
-      case 'motor.m3': return m(1, -1);
-      case 'motor.m4': return m(1, 1);
+      case 'motor.m1': return m(1, 1, 1);
+      case 'motor.m2': return m(1, -1, 2);
+      case 'motor.m3': return m(-1, -1, 3);
+      case 'motor.m4': return m(-1, 1, 4);
       case 'acc.x': return this.acc.x;
       case 'acc.y': return this.acc.y;
       case 'acc.z': return this.acc.z;
@@ -1228,7 +1357,12 @@ class SimLink extends Link {
       case 'baro.pressure': return 1013.25 - s.z * 0.12;
       case 'sys.canfly': return this.locked ? 0 : 1;
       case 'sys.isFlying': return s.z > 0.02 ? 1 : 0;
-      default: return 0;
+      case 'sys.isTumbled': return this._tumbled() ? 1 : 0;
+      case 'health.motorPass': return this.health.pass;
+      case 'health.batterySag': return this.health.sag;
+      default:
+        if (name.startsWith('health.motorVar')) { const mi = Number(name.slice(-1)) - 1; return this.health.var[mi] * (name[15] === 'X' ? 0.55 : 0.45); }
+        return 0;
     }
   }
 
@@ -1839,8 +1973,16 @@ class Flight extends Emitter {
 
   arm() {
     const sup = this.sup;
-    if (sup?.isLocked) { toast('The Crazyflie is locked after an emergency stop or crash. Restart it.', 'bad'); return; }
-    if (sup?.isTumbled) { toast('The Crazyflie is upside down. Turn it over first.', 'warn'); return; }
+    if (sup?.isLocked) { toast('The Crazyflie is locked after an emergency stop. Switch it off and on again.', 'bad'); return; }
+    if (sup?.isTumbled) { toast('The Crazyflie is tilted or upside down. Put it flat on the floor first.', 'warn'); return; }
+    if (sup?.isCrashed) {
+      // After a tumble the firmware refuses setpoints until it gets a recovery request.
+      this.cf.recover();
+      // The next status packet may have been sampled before the recovery landed.
+      this.crashGraceT = performance.now() + 1000;
+      this.sup = { ...sup, isCrashed: false };
+      toast('Recovered from the crash. Check the Pre-flight tab before flying again.', 'warn');
+    }
     // Brushed Crazyflie 2.1 auto-arms; brushless ones need an explicit request.
     if (!sup || (!sup.isAutoArmed && !sup.isArmed)) this.cf.arm(true);
     this.thrustLock = true;
@@ -1862,6 +2004,7 @@ class Flight extends Emitter {
   land() { this.landZ0 = this.height(); this.setState('landing'); }
   estop() {
     this.cf.emergencyStop();
+    this.emit('estop');
     if (this.cf.connected) {
       this.setState('estop');
       this.input.rumble(1, 600);
@@ -1878,6 +2021,16 @@ class Flight extends Emitter {
     this.inp = inp;
     if (!this.cf.connected) { if (this.state !== 'idle') this.setState('idle'); return; }
     if (this.sup?.isLocked && this.state !== 'estop' && this.state !== 'disarmed') this.setState('estop');
+    // Tumbled or crashed: the firmware has cut the motors. Stop streaming so nothing
+    // (e.g. a throttle still held up) restarts them when the crash is cleared.
+    const crashed = this.sup?.isCrashed && now > (this.crashGraceT || 0);
+    if ((crashed || this.sup?.isTumbled) && (this.inFlight || this.state === 'armed')) {
+      this.setState('disarmed');
+      this.thrustLock = true;
+      this.input.rumble(1, 400);
+      this.emit('crash');
+      toast('The Crazyflie tipped over and stopped its motors. See the Pre-flight tab for what happened.', 'bad');
+    }
     if (this.state === 'idle' || this.state === 'disarmed' || this.state === 'estop') return;
 
     const S = settings, c = this.cf.commander, mode = this.mode;
@@ -2345,6 +2498,7 @@ function onLogData(vals, vars) {
     plot.push(v.full, x, now);
   }
   if (vals['supervisor.info'] !== undefined && vars.some((v) => v.full === 'supervisor.info')) flight.sup = Crazyflie.decodeSup(vals['supervisor.info']);
+  if (vars.some((v) => v.full === 'stabilizer.roll')) recordAttitude(now);
 }
 
 async function startTelemetry() {
@@ -2353,7 +2507,8 @@ async function startTelemetry() {
   const sets = [
     ['attitude', ['stabilizer.roll', 'stabilizer.pitch', 'stabilizer.yaw', 'stabilizer.thrust', 'stateEstimate.z'], att],
     ['status', ['pm.vbat', 'pm.batteryLevel', 'pm.state', 'supervisor.info', 'range.zrange', 'radio.rssi', 'sys.canfly', 'sys.isFlying', 'sys.isTumbled'], settings.statPeriod],
-    ['motors', ['motor.m1', 'motor.m2', 'motor.m3', 'motor.m4', 'stateEstimate.vz'], ble ? 150 : 100],
+    // Fast motor data lets the flight recorder explain a flip.
+    ['motors', ['motor.m1', 'motor.m2', 'motor.m3', 'motor.m4', 'stateEstimate.vz'], att],
     ['position', ['stateEstimate.x', 'stateEstimate.y', 'stateEstimate.vx', 'stateEstimate.vy', 'baro.asl'], ble ? 300 : 150],
   ];
   telemetry = [];
@@ -2542,7 +2697,8 @@ function updateFlyText() {
   // banner
   const bn = $('#banner');
   let msg = '', kind = 'warn';
-  if (flight.sup?.isTumbled) { msg = 'The Crazyflie is upside down (tumbled). Motors are blocked until it is turned over.'; }
+  if (flight.sup?.isTumbled) { msg = 'The Crazyflie is tipped over (tumbled). Motors are blocked until it is back on its feet.'; }
+  else if (flight.sup?.isCrashed) { msg = 'The Crazyflie crashed. Put it upright, then press ARM to recover. The Pre-flight tab shows what happened.'; kind = 'bad'; }
   else if (flight.sup?.isLocked) { msg = 'The Crazyflie is locked (emergency stop or crash). Switch it off and on to fly again.'; kind = 'bad'; }
   else if (tele.get('pm.state') === 3) { msg = 'Battery low: land now and charge.'; }
   else if (tele.get('pm.state') === 1) { msg = 'Charging. Unplug USB power before flying.'; kind = 'ok'; }
@@ -2844,6 +3000,250 @@ function updatePadTab() {
   padBtnEls.forEach((e, i) => e.classList.toggle('on', (inp.buttons?.[i] || 0) > 0.5));
 }
 
+// ---------------- Pre-flight check & flight recorder ----------------
+const CORNERS = ['front-right', 'back-right', 'back-left', 'front-left'];
+const SPIN_DIR = ['counter-clockwise', 'clockwise', 'counter-clockwise', 'clockwise'];
+const recorder = { s: [], flip: null, lastFlipT: -1e9, history: [] };
+const tiltOf = (x) => Math.max(Math.abs(x.roll || 0), Math.abs(x.pitch || 0));
+const avgOf = (a) => (a.length ? a.reduce((p, c) => p + c, 0) / a.length : NaN);
+
+function recordAttitude(now) {
+  const g = (n) => tele.get(n), last = cf.commander.last;
+  const smp = {
+    t: now, roll: g('stabilizer.roll'), pitch: g('stabilizer.pitch'), yaw: g('stabilizer.yaw'), thrust: g('stabilizer.thrust'),
+    z: g('stateEstimate.z'), m: [1, 2, 3, 4].map((i) => (tele.age(`motor.m${i}`) < 400 ? g(`motor.m${i}`) : NaN)),
+    state: flight.state, mode: settings.mode,
+    spRoll: typeof last?.roll === 'number' ? last.roll : NaN, spPitch: typeof last?.pitch === 'number' ? last.pitch : NaN,
+  };
+  const r = recorder.s;
+  r.push(smp);
+  while (r.length && now - r[0].t > 30000) r.shift();
+  if (tiltOf(smp) > 70 && now - recorder.lastFlipT > 8000 && r.some((x) => now - x.t < 4000 && x.thrust > 4000)) {
+    recorder.lastFlipT = now;
+    recorder.flip = analyzeFlip(r.slice());
+    recorder.history.push(recorder.flip);
+    renderFlip();
+  }
+}
+
+// Work out which way it tipped and what the motors were doing while it did.
+function analyzeFlip(samples) {
+  const end = samples.length - 1;
+  let onset = end;
+  while (onset > 0 && tiltOf(samples[onset]) >= 8) onset--;
+  let k = onset;
+  while (k < end && tiltOf(samples[k]) < 30) k++;
+  const at = samples[k];
+  const right = at.roll > 0, noseDown = at.pitch < 0, ar = Math.abs(at.roll), ap = Math.abs(at.pitch);
+  let suspects, where;
+  if (ar > 2 * ap) { suspects = right ? [0, 1] : [2, 3]; where = right ? 'right side' : 'left side'; }
+  else if (ap > 2 * ar) { suspects = noseDown ? [0, 3] : [1, 2]; where = noseDown ? 'front' : 'back'; }
+  else { const m = right ? (noseDown ? 0 : 1) : (noseDown ? 3 : 2); suspects = [m]; where = `${CORNERS[m]} corner`; }
+  const others = [0, 1, 2, 3].filter((m) => !suspects.includes(m));
+  const win = samples.slice(onset, k + 1).filter((x) => x.m.every(Number.isFinite));
+  const avg = win.length ? [0, 1, 2, 3].map((j) => avgOf(win.map((x) => x.m[j]))) : null;
+  let start = k;
+  while (start > 0 && samples[start - 1].thrust > 1000) start--;
+  const secs = (at.t - samples[start].t) / 1000;
+  const zMax = Math.max(0, ...samples.slice(start, k + 1).map((x) => x.z).filter(Number.isFinite));
+  // yaw rate over the second before tipping
+  const yw = samples.filter((x) => x.t > at.t - 1000 && x.t <= at.t && Number.isFinite(x.yaw));
+  let turn = 0;
+  for (let i = 1; i < yw.length; i++) { let d = yw[i].yaw - yw[i - 1].yaw; if (d > 180) d -= 360; if (d < -180) d += 360; turn += d; }
+  const yawRate = yw.length > 1 ? turn / ((yw[yw.length - 1].t - yw[0].t) / 1000) : 0;
+  const M = (list) => list.map((m) => `M${m + 1}`).join(' and ');
+  const pct = (v) => `${Math.round((v / 65535) * 100)}%`;
+  const lines = [];
+  let cause = 'unknown';
+  lines.push(`It tipped toward the <b>${where}</b> (${M(suspects)}), ${secs.toFixed(1)} s after the motors started, ${zMax < 0.08 ? '<b>before it really left the ground</b>' : `at ${zMax.toFixed(2)} m`}.`);
+  if (avg) {
+    const sus = avgOf(suspects.map((m) => avg[m])), oth = avgOf(others.map((m) => avg[m]));
+    if (sus > oth * 1.12 || sus > 0.85 * 65535) {
+      cause = 'lift';
+      lines.push(`While it tipped, the flight controller drove ${M(suspects)} to <b>${pct(sus)}</b> (the others ${pct(oth)}) to lift that side, but it still went down. <b>The motor or propeller on ${M(suspects)} is not giving enough lift.</b>`);
+      lines.push(`Most likely: the wrong propeller type on that motor (it must spin ${suspects.map((m) => `M${m + 1} ${SPIN_DIR[m]}`).join(', ')}), a propeller upside down, cracked or loose, or a worn motor. Fit a new propeller of the right type there. If it still tips the same way, swap that motor.`);
+    } else if (sus < oth * 0.92) {
+      cause = 'sensing';
+      lines.push(`The flight controller <b>lowered</b> ${M(suspects)} (${pct(sus)} vs ${pct(oth)}) instead of raising them, so it was steering into the tip. That happens if a motor cable is in the wrong socket (a different corner spins than expected) or the firmware doesn't match this Crazyflie. Run the motor spin test.`);
+    } else {
+      cause = 'even';
+      lines.push(`All motors were running about evenly (${avg.map(pct).join(' / ')}), so the controller was not fighting the tilt. Check that the drone reads level at rest (check 4) and that each motor spins the right corner (check 2).`);
+    }
+  } else lines.push('No motor data was captured, so the cause can\'t be narrowed down further. Run the motor spin test and the propeller test.');
+  if (Math.abs(yawRate) > 120) lines.push(`It was also <b>spinning at ${Math.abs(yawRate).toFixed(0)}°/s</b> just before tipping. That means the propeller directions are unbalanced, e.g. two clockwise propellers on one diagonal. Compare every propeller with the diagram.`);
+  const sp = Math.max(Math.abs(at.spRoll || 0), Math.abs(at.spPitch || 0));
+  if (sp > 12) lines.push(`Note: the sticks (or trim) were asking for ${sp.toFixed(0)}° of tilt at that moment.`);
+  const prev = recorder.history[recorder.history.length - 1];
+  if (prev && prev.suspects.join() === suspects.join()) lines.push('<b>Same direction as the previous flip</b>, so this is a consistent fault on that corner rather than bad luck.');
+  return { t: at.t, where, suspects, avg, yawRate, zMax, secs, cause, lines, window: samples.filter((x) => x.t > at.t - 3000 && x.t < at.t + 800) };
+}
+
+function renderFlip() {
+  const f = recorder.flip;
+  for (let m = 0; m < 4; m++) $(`#svgM${m + 1}`).classList.toggle('suspect', !!f?.suspects.includes(m));
+  if (!f) return;
+  $('#flipReport').classList.remove('muted');
+  $('#flipReport').innerHTML = `<ul style="margin:0;padding-left:18px">${f.lines.map((l) => `<li>${l}</li>`).join('')}</ul>`;
+  $('#flipChart').classList.remove('hidden');
+  $('#flipCsv').disabled = false;
+  $('#flipCopy').disabled = false;
+  drawFlipChart();
+}
+
+function drawFlipChart() {
+  const f = recorder.flip;
+  if (!f || $('#flipChart').classList.contains('hidden')) return;
+  const [c, W, H] = prep($('#flipChart'));
+  const data = f.window;
+  if (data.length < 2) return;
+  const t0 = data[0].t, t1 = data[data.length - 1].t, L = 40, R = 40, half = (H - 36) / 2;
+  const X = (t) => L + ((t - t0) / (t1 - t0)) * (W - L - R);
+  const panel = (top, lo, hi, label, series) => {
+    const Y = (v) => top + (1 - (clamp(v, lo, hi) - lo) / (hi - lo)) * half;
+    c.strokeStyle = colors.line; c.strokeRect(L, top, W - L - R, half);
+    c.fillStyle = colors.muted; c.font = '11px system-ui'; c.textAlign = 'right'; c.textBaseline = 'middle';
+    c.fillText(hi, L - 4, top + 4); c.fillText(lo, L - 4, top + half - 4); c.textAlign = 'left'; c.fillText(label, L + 6, top + 10);
+    for (const [key, col, name] of series) {
+      c.strokeStyle = col; c.lineWidth = 1.8; c.beginPath();
+      let first = true;
+      for (const d of data) { const v = key(d); if (!Number.isFinite(v)) { first = true; continue; } if (first) { c.moveTo(X(d.t), Y(v)); first = false; } else c.lineTo(X(d.t), Y(v)); }
+      c.stroke();
+    }
+    let lx = W - R;
+    c.textAlign = 'right';
+    for (const [, col, name] of [...series].reverse()) { c.fillStyle = col; c.fillText(name, lx, top + 10); lx -= c.measureText(name).width + 12; }
+  };
+  panel(4, -90, 90, 'tilt °', [[(d) => d.roll, PALETTE[0], 'roll'], [(d) => d.pitch, PALETTE[1], 'pitch']]);
+  panel(16 + half, 0, 100, 'motors %', [0, 1, 2, 3].map((m) => [(d) => (d.m[m] / 65535) * 100, f.suspects.includes(m) ? colors.bad : PALETTE[2 + m], `M${m + 1}`]));
+  c.strokeStyle = colors.warn; c.setLineDash([4, 4]); c.beginPath(); c.moveTo(X(f.t), 4); c.lineTo(X(f.t), H - 18); c.stroke(); c.setLineDash([]);
+  c.fillStyle = colors.muted; c.textAlign = 'center'; c.fillText('30° tilt', X(f.t), H - 8);
+}
+
+function flipReportText() {
+  const f = recorder.flip;
+  if (!f) return '';
+  const plain = (h) => h.replace(/<[^>]+>/g, '');
+  return [`Crazyflie Flight Deck flip report (${new Date().toISOString()})`,
+    `${cf.deviceType || 'Crazyflie'} · firmware ${cf.firmware || '?'} · protocol ${cf.protocolVersion} · mode ${settings.mode}`,
+    ...f.lines.map((l) => `- ${plain(l)}`),
+    f.avg ? `Average motor output while tipping: ${f.avg.map((v, i) => `M${i + 1} ${Math.round((v / 65535) * 100)}%`).join(', ')}` : '',
+    `Yaw rate before tip: ${f.yawRate.toFixed(0)} deg/s`].filter(Boolean).join('\n');
+}
+$('#flipCopy').addEventListener('click', () => navigator.clipboard?.writeText(flipReportText()).then(() => toast('Report copied', 'ok')));
+$('#flipCsv').addEventListener('click', () => {
+  const rows = ['time_s,state,mode,roll,pitch,yaw,z,thrust,m1,m2,m3,m4,setpoint_roll,setpoint_pitch'];
+  const t0 = recorder.s[0]?.t || 0;
+  for (const d of recorder.s) rows.push([((d.t - t0) / 1000).toFixed(3), d.state, d.mode, d.roll, d.pitch, d.yaw, d.z, d.thrust, ...d.m, d.spRoll, d.spPitch].map((v) => (typeof v === 'number' ? (Number.isFinite(v) ? +v.toFixed(4) : '') : v)).join(','));
+  download(`crazyflie-flip-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`, rows.join('\n'));
+});
+
+// Motor spin test via motorPowerSet (bypasses the controller, so keep it short).
+let spinning = false, spinAbort = false;
+function canTestMotors(what) {
+  if (!cf.connected || !cf.param.toc) { toast('Connect first (and wait for the parameter table to load).', 'warn'); return false; }
+  if (flight.inFlight || flight.state === 'armed') { toast('Disarm first.', 'warn'); return false; }
+  if (flight.state === 'estop' || flight.sup?.isLocked) { toast('Restart the Crazyflie after the emergency stop first.', 'warn'); return false; }
+  if (!$('#spinOk').checked) { toast(`Tick "propellers are clear" before the ${what}.`, 'warn'); return false; }
+  return true;
+}
+async function spinMotor(i) {
+  if (spinning || !canTestMotors('motor test')) return;
+  if (!cf.param.has('motorPowerSet.enable')) { toast('This firmware has no motor test (motorPowerSet).', 'warn'); return; }
+  spinning = true; spinAbort = false;
+  const P = cf.param, name = `motorPowerSet.m${i + 1}`;
+  $(`#svgM${i + 1}`).classList.add('spin');
+  $('#spinStatus').innerHTML = `Spinning <b>M${i + 1}</b>: the <b>${CORNERS[i]}</b> motor should turn <b>${SPIN_DIR[i]}</b> (seen from above).`;
+  try {
+    for (let j = 1; j <= 4; j++) await P.set(`motorPowerSet.m${j}`, 0);
+    await P.set(name, 16000);
+    await P.set('motorPowerSet.enable', 1);
+    for (let t = 0; t < 15 && !spinAbort; t++) await sleep(100);
+  } catch (e) { toast(`Motor test: ${e.message}`, 'bad'); }
+  finally {
+    try { await P.set('motorPowerSet.enable', 0); await P.set(name, 0); }
+    catch { toast('Could not stop the motor test. Switch the Crazyflie off now.', 'bad'); }
+    $(`#svgM${i + 1}`).classList.remove('spin');
+    spinning = false;
+    $('#spinStatus').innerHTML = `Did the <b>${CORNERS[i]}</b> motor spin <b>${SPIN_DIR[i]}</b>? If a <i>different</i> corner spun, the motor cables are in the wrong sockets.
+      If it spun the wrong way, the wrong motor type is fitted there: clockwise and counter-clockwise motors differ, so check Bitcraze's assembly guide.`;
+  }
+}
+$$('[data-spin]').forEach((b) => b.addEventListener('click', () => spinMotor(Number(b.dataset.spin))));
+flight.on('estop', () => {
+  if (!spinning && !propTesting) return;
+  spinAbort = true;
+  if (cf.param.has('motorPowerSet.enable')) cf.param.set('motorPowerSet.enable', 0).catch(() => {});
+});
+
+// Firmware propeller test (health.c): per-motor vibration variance.
+let propTesting = false;
+async function runPropTest() {
+  if (propTesting || !canTestMotors('propeller test')) return;
+  if (!cf.param.has('health.startPropTest') || !cf.log.has('health.motorVarXM1')) { toast('This firmware has no propeller test.', 'warn'); return; }
+  propTesting = true;
+  const btn = $('#propTest');
+  btn.disabled = true; btn.textContent = 'Testing… (motors spin one by one)';
+  const names = [1, 2, 3, 4].flatMap((i) => [`health.motorVarXM${i}`, `health.motorVarYM${i}`]).concat(['health.motorPass']);
+  for (const n of names) delete tele.v[n];
+  let blk = null;
+  try {
+    blk = await cf.log.start('proptest', names, 100, onLogData);
+    await cf.param.set('health.startPropTest', 1);
+    const t0 = performance.now();
+    let sawRunning = false;
+    for (;;) {
+      await sleep(100);
+      const mp = tele.get('health.motorPass'), el = performance.now() - t0;
+      if (mp !== undefined && !(mp & 0x80)) sawRunning = true;
+      if (mp !== undefined && (mp & 0x80) && (sawRunning || el > 6000)) break;
+      if (el > 15000) throw new Error('the Crazyflie did not finish the test');
+    }
+    await sleep(300);
+    const v = [1, 2, 3, 4].map((i) => (tele.get(`health.motorVarXM${i}`) || 0) + (tele.get(`health.motorVarYM${i}`) || 0));
+    const thr = cf.param.get('health.propTestThreshold') || 0, mp = tele.get('health.motorPass');
+    const sorted = [...v].sort((a, b) => a - b), med = (sorted[1] + sorted[2]) / 2;
+    const bad = v.map((x, m) => (thr > 0 ? !(mp & (1 << m)) : x > med * 2.2 && x - med > 1));
+    drawPropChart(v, bad);
+    const flagged = bad.map((b, m) => (b ? m : -1)).filter((m) => m >= 0);
+    for (let m = 0; m < 4; m++) $(`#svgM${m + 1}`).classList.toggle('suspect', flagged.includes(m) || !!recorder.flip?.suspects.includes(m));
+    $('#propResult').innerHTML = flagged.length
+      ? `<b style="color:var(--bad)">${flagged.map((m) => `M${m + 1} (${CORNERS[m]})`).join(', ')} vibrates much more than the others.</b> Replace that propeller (check that it's the right type and not cracked), make sure the motor sits firmly, then test again. If it stays high, the motor is worn.`
+      : '<b style="color:var(--ok)">All four motors vibrate about the same.</b> No damaged or unbalanced propeller found. A propeller can still be the wrong type or upside down, though, so check them against the diagram.';
+  } catch (e) {
+    toast(`Propeller test: ${e.message}`, 'bad');
+  } finally {
+    if (blk) await cf.log.stop(blk).catch(() => {});
+    propTesting = false; btn.disabled = false; btn.textContent = 'Run propeller test';
+  }
+}
+function drawPropChart(v, bad) {
+  const cv = $('#propChart');
+  cv.classList.remove('hidden');
+  const [c, W, H] = prep(cv);
+  const max = Math.max(...v, 1), bw = (W - 40) / 4;
+  v.forEach((x, m) => {
+    const hh = (x / max) * (H - 40), xx = 20 + m * bw + bw * 0.2;
+    c.fillStyle = bad[m] ? colors.bad : colors.ok; c.fillRect(xx, H - 22 - hh, bw * 0.6, hh);
+    c.fillStyle = colors.text; c.font = '600 12px system-ui'; c.textAlign = 'center';
+    c.fillText(`M${m + 1}`, xx + bw * 0.3, H - 6); c.fillStyle = colors.muted; c.fillText(x.toFixed(1), xx + bw * 0.3, H - 28 - hh);
+  });
+}
+$('#propTest').addEventListener('click', runPropTest);
+
+function updateCheckTab() {
+  if (!cf.connected) return;
+  const r = tele.get('stabilizer.roll'), p = tele.get('stabilizer.pitch'), sup = flight.sup;
+  const ok = (good, txt) => `<span style="color:${good ? colors.ok : colors.warn}">${good ? '✓' : '⚠'} ${txt}</span>`;
+  const rows = [
+    ['Roll / pitch at rest', Number.isFinite(r) ? ok(Math.abs(r) < 3 && Math.abs(p) < 3, `${r.toFixed(1)}° / ${p.toFixed(1)}°`) : '–'],
+    ['Ready to fly', sup ? ok(sup.canFly, sup.canFly ? 'yes' : sup.isCrashed ? 'no: crashed (press ARM to recover)' : sup.isTumbled ? 'no: tumbled' : 'no: keep it still and level') : '–'],
+    ['Battery', Number.isFinite(tele.get('pm.vbat')) ? ok(tele.get('pm.vbat') > 3.8, `${tele.get('pm.vbat').toFixed(2)} V`) : '–'],
+    ['Model / firmware', `${cf.deviceType || '?'} · ${cf.firmware || '?'}`],
+    ['Decks', $$('#deckChips .chip').map((c) => c.textContent).join(', ') || 'none detected'],
+  ];
+  $('#restTable').innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+}
+
 // ---------------- Settings ----------------
 function syncSettingsUI() {
   for (const el of $$('[data-set]')) {
@@ -2893,6 +3293,7 @@ function activateTab(id) {
   $$('.tab').forEach((t) => t.classList.toggle('on', t.id === `tab-${id}`));
   if (id === 'console') consoleDirty = true;
   if (id === 'logs') renderBlocks();
+  if (id === 'check') requestAnimationFrame(drawFlipChart);
 }
 $$('#tabs button').forEach((b) => b.addEventListener('click', () => activateTab(b.dataset.tab)));
 
@@ -2921,6 +3322,7 @@ setInterval(() => {
   updateHeader();
   if (activeTab === 'fly') updateFlyText();
   if (activeTab === 'pad') updatePadTab();
+  if (activeTab === 'check') updateCheckTab();
   if (activeTab === 'console') flushConsole();
   if (activeTab === 'logs') for (const td of $$('#blkList [data-live]')) { const v = tele.get(td.dataset.live); td.textContent = typeof v === 'number' ? +v.toFixed(4) : '–'; }
 }, 100);
@@ -2941,7 +3343,7 @@ appLog(`Ready. Heartbeat: ${ticker.kind === 'worker' ? 'background-safe worker' 
 if (!navigator.bluetooth && !navigator.usb) toast('This browser supports neither Web Bluetooth nor WebUSB. Use Chrome or Edge, or try the Simulator.', 'warn');
 else if (navigator.bluetooth?.getAvailability) navigator.bluetooth.getAvailability().then((ok) => { if (!ok && settings.link === 'ble') toast('Bluetooth looks switched off on this computer.', 'warn'); }).catch(() => {});
 // Exposed for the browser console (debugging): window.cfdeck.cf.param.set('...', v)
-window.cfdeck = { cf, flight, input, settings, tele, plot, startLink, BleLink, SimLink };
+window.cfdeck = { cf, flight, input, settings, tele, plot, startLink, BleLink, SimLink, recorder };
 </script>
 </body>
 </html>

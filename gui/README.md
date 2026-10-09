@@ -28,6 +28,7 @@ No drone nearby? Pick **Simulator**: everything works the same, including the PS
 | **Flight modes** | Manual (stabilized) · Altitude hold (barometer) · Height hold (Flow/Z-ranger) · Hover (Flow deck) · Position hold |
 | **Instruments** | Artificial horizon with roll arc and pitch ladder · **half-circle roll and pitch gauges** with drone silhouettes, green/amber/red zones · compass · altitude tape with target · motor outputs · stick view · live packet bytes |
 | **Safety** | Big emergency stop (Space / ○) · thrust lock · thrust slew · auto-land if the controller unplugs or the tab is hidden · low-battery rumble · supervisor status (tumbled, locked, can fly) |
+| **Pre-flight check** | Motor spin test with direction diagram · firmware propeller vibration test · level-at-rest check · **flight recorder that explains a flip** (which corner dropped, what the motors did, likely cause) with CSV export · one-press crash recovery |
 | **Like cfclient** | Plotter with presets and CSV export · log TOC browser with custom log blocks and CSV recording · full parameter editor with persistent save · console · deck detection · LED-ring control · trim · flight presets |
 
 ## PS5 controls (Mode 2)
